@@ -1,0 +1,32 @@
+{
+  "name": "ws-remoting",
+  "version": "1.0.0",
+  "description": "A remoting procedure call package with websockets and promises",
+  "main": "index.js",
+  "scripts": {
+    "test": "jest",
+    "start": "nodemon -w ./src"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rportela/ws-remoting.git"
+  },
+  "keywords": [
+    "ws",
+    "websocket",
+    "rpc",
+    "remoting"
+  ],
+  "author": "Rodrigo Portela",
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/rportela/ws-remoting/issues"
+  },
+  "homepage": "https://github.com/rportela/ws-remoting#readme",
+  "dependencies": {
+    "@types/ws": "^7.2.4",
+    "bufferutil": "^4.0.1",
+    "utf-8-validate": "^5.0.2",
+    "ws": "^7.2.5"
+  }
+}
