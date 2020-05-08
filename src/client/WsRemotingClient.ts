@@ -50,14 +50,14 @@ export default class WsRemotingClient {
    * If a socket is already present, this method does nothing.
    */
   public connect() {
-    if (!this.is_connected && !this.is_connecting) {
-      this.is_connecting = true;
-      this.socket = new WebSocket(this.url);
-      this.socket.onopen = this.handleConnect;
-      this.socket.onerror = this.handleError;
-      this.socket.onmessage = this.handleMessage;
-      this.socket.onclose = this.handleDisconnect;
-    }
+    if (this.is_connecting) return;
+    if (this.is_connected) return;
+    this.is_connecting = true;
+    this.socket = new WebSocket(this.url);
+    this.socket.onopen = this.handleConnect;
+    this.socket.onerror = this.handleError;
+    this.socket.onmessage = this.handleMessage;
+    this.socket.onclose = this.handleDisconnect;
   }
 
   /**
@@ -119,7 +119,9 @@ export default class WsRemotingClient {
    * @param message
    */
   private handleBroadcast(action: string, message: any) {
-    console.log("message broadcasted", action, message);
+    console.log("Received a broadcast", action, message);
+    const callbacks: any[] = this.broadcastListeners[action];
+    if (callbacks) for (const callback of callbacks) callback(message);
   }
 
   /**

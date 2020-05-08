@@ -6,7 +6,6 @@ import * as WebSocket from "ws";
  */
 export default class WsRemotingServer {
   private server: WebSocket.Server;
-  private clients: any = {};
   private actions: any = {};
 
   /**
@@ -73,7 +72,7 @@ export default class WsRemotingServer {
         if (!action) {
           this.sendError(ws, json.id, "Action not found: " + json.action);
         } else {
-          this.sendSuccess(ws, json.id, action(json.params));
+          this.sendSuccess(ws, json.id, action(ws.id, json.params));
         }
       }
     } catch (error) {
@@ -88,31 +87,37 @@ export default class WsRemotingServer {
    */
   private handleConnection = (ws: any, req: any): void => {
     ws.id = req.headers["sec-websocket-key"];
-    this.clients[ws.id] = ws;
     console.log("connected client", ws.id);
     ws.on("message", (message: string) => {
       this.handleMessage(ws, message);
     });
     ws.on("close", () => {
-      delete this.clients[ws.id];
       console.log("disconnected client", ws.id);
     });
   };
 
   /**
    * This method broadcasts a message to all sockets connected.
+   * Optionally you can ignore the specific client id that sent the original message.
    *
    * @param action
    * @param params
+   * @param ignore
    */
-  broadcast(action: string, params: any): void {
+  broadcast(
+    action: string,
+    params: any,
+    ignore: string | undefined = undefined
+  ): void {
     const broadmsg = JSON.stringify({
       resultType: "broadcast",
       action: action,
-      params: params,
+      result: params,
     });
-    this.server.clients.forEach((client) => {
-      client.send(broadmsg);
+    this.server.clients.forEach((client: any) => {
+      if (!ignore || ignore !== client.id) {
+        client.send(broadmsg);
+      }
     });
   }
 
@@ -122,7 +127,7 @@ export default class WsRemotingServer {
    * @param action
    * @param fn
    */
-  register(action: string, fn: (params: any) => any): void {
+  register(action: string, fn: (source: string, params: any) => any): void {
     this.actions[action] = fn;
   }
 
