@@ -1,49 +1,18 @@
 import * as WebSocket from "ws";
+import Dispatcher from "../common/Dispatcher";
+import { WsResponse, WsResponseType } from "../common/WsResponse";
+import WsRequest from "../common/WsRequest";
 
+export interface WsServerAction {
+  (sender: string, params: any): any;
+}
 /**
  * This class implements a remoting server.
  * Use this to realtime expose functionality to any app you choose.
  */
-export default class WsRemotingServer {
+export class WsServer {
   private server: WebSocket.Server;
-  private actions: any = {};
-
-  /**
-   * This method sends a parameterized error message to the clients.
-   * When received, they should reject their promises.
-   *
-   * @param ws
-   * @param id
-   * @param failMessage
-   */
-  private sendError(ws: any, id: any, failMessage: any) {
-    ws.send(
-      JSON.stringify({
-        id: id,
-        resultType: "error",
-        failMessage: failMessage,
-      })
-    );
-  }
-
-  /**
-   * This method sends a parameterized success message to the clients.
-   * When received, they should resolve their promises.
-   *
-   * @param ws
-   * @param id
-   * @param result
-   */
-  private sendSuccess(ws: any, id: any, result: any) {
-    ws.send(
-      JSON.stringify({
-        id: id,
-        resultType: "success",
-        result: result,
-      })
-    );
-  }
-
+  public actions: Dispatcher = new Dispatcher();
   /**
    * This method parses a received messagae as JSON and takes the appropriate action.
    * If it fails, a message is sent back to the client with no id but a failMessage.
@@ -51,33 +20,36 @@ export default class WsRemotingServer {
    * @param ws
    * @param message
    */
-  private handleMessage(ws: any, message: string) {
+  private receiveRequest(ws: any, message: string) {
     //console.log(ws.id, message);
+    const response: WsResponse = new WsResponse();
     try {
-      const json = JSON.parse(message);
-      if (!json.id) {
-        this.sendError(
-          ws,
-          json.id,
-          "You need to provide a message id to track the result."
-        );
-      } else if (!json.action) {
-        this.sendError(
-          ws,
-          json.id,
-          "Your message needs to have an 'action' attribute."
-        );
+      const request: WsRequest = JSON.parse(message);
+      if (!request.id) {
+        response.responseType = WsResponseType.ERROR;
+        response.error =
+          "You need to provide a message id to track the result.";
       } else {
-        const action = this.actions[json.action];
-        if (!action) {
-          this.sendError(ws, json.id, "Action not found: " + json.action);
+        response.id = request.id;
+        if (!request.action) {
+          response.responseType = WsResponseType.ERROR;
+          response.error = "Your message needs to have an 'action' attribute.";
         } else {
-          this.sendSuccess(ws, json.id, action(ws.id, json.params));
+          const action: WsServerAction = this.actions[request.action];
+          if (!action) {
+            response.responseType = WsResponseType.ERROR;
+            response.error = "Action not found: " + request.action;
+          } else {
+            response.result = action(ws.id, request.params);
+            response.responseType = WsResponseType.SUCCESS;
+          }
         }
       }
     } catch (error) {
-      this.sendError(ws, null, error.message);
+      response.error = error.toString();
+      response.responseType = WsResponseType.ERROR;
     }
+    ws.send(JSON.stringify(response));
   }
 
   /**
@@ -89,7 +61,7 @@ export default class WsRemotingServer {
     ws.id = req.headers["sec-websocket-key"];
     console.log("connected client", ws.id);
     ws.on("message", (message: string) => {
-      this.handleMessage(ws, message);
+      this.receiveRequest(ws, message);
     });
     ws.on("close", () => {
       console.log("disconnected client", ws.id);
@@ -106,13 +78,13 @@ export default class WsRemotingServer {
    */
   broadcast(
     action: string,
-    params: any,
+    result: any,
     ignore: string | undefined = undefined
   ): void {
     const broadmsg = JSON.stringify({
-      resultType: "broadcast",
+      responseType: WsResponseType.BROADCAST,
       action: action,
-      result: params,
+      result: result,
     });
     this.server.clients.forEach((client: any) => {
       if (!ignore || ignore !== client.id) {
@@ -127,7 +99,7 @@ export default class WsRemotingServer {
    * @param action
    * @param fn
    */
-  register(action: string, fn: (source: string, params: any) => any): void {
+  register(action: string, fn: WsServerAction): void {
     this.actions[action] = fn;
   }
 

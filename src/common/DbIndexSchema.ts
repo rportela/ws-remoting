@@ -1,4 +1,4 @@
-export interface WsDbIndex {
+export default interface DbIndexSchema {
   property: string;
   unique: boolean;
 }
