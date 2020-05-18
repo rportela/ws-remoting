@@ -1,29 +1,41 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+const Db_1 = require("../common/Db");
+const BrowserDb_1 = require("./BrowserDb");
 const Dispatcher_1 = require("../common/Dispatcher");
-const WsDbInterfaces_1 = require("../common/WsDbInterfaces");
-const ClientDb_1 = require("./ClientDb");
-/**
- *
- * @author Rodrigo Portela
- */
+class ObservableDbSelect extends Db_1.DbSelect {
+    constructor(db, collection) {
+        super();
+        this.db = db;
+        this.collection = collection;
+    }
+    first() {
+        return this.db.first(this.collection, this._where, this._order);
+    }
+    toArray() {
+        return this.db.query(this.collection, this._where, this._order, this._offset, this._limit);
+    }
+}
+exports.ObservableDbSelect = ObservableDbSelect;
 class ObservableDb {
     constructor(schema) {
-        this.db = new ClientDb_1.default(schema);
+        this.db = new BrowserDb_1.default(schema);
         this.listeners = {};
-        for (const col of schema.collections) {
-            this.listeners[col.name] = new Dispatcher_1.default();
-        }
+        schema.collections.forEach((col) => (this.listeners[col.name] = new Dispatcher_1.default()));
+    }
+    createId() {
+        return new Date().getTime().toString(36) + "_" + Math.random().toString(36);
     }
     /**
      *
      * @param collection
-     * @param key
+     * @param action
      * @param params
      */
-    _notify(collection, key, ...params) {
-        const d = this.listeners[collection];
-        d.dispatch(key, params);
+    notifyListeners(collection, action, params) {
+        const listener = this.listeners[collection];
+        if (listener)
+            listener.dispatch(action, params);
     }
     /**
      *
@@ -34,26 +46,76 @@ class ObservableDb {
     /**
      *
      * @param collection
-     * @param record
-     * @param key
      */
-    add(collection, record, key) {
-        return this.db.add(collection, record, key).then((key) => {
-            this._notify(collection, WsDbInterfaces_1.WsDbActions.INSERTED, record);
-            return key;
+    getCollectionSchema(collection) {
+        return this.db.getSchema().collections.find((c) => c.name === collection);
+    }
+    /**
+     *
+     * @param collection
+     */
+    getCollectionKeyPath(collection) {
+        const colSchema = this.getCollectionSchema(collection);
+        return colSchema ? colSchema.keyPath : null;
+    }
+    /**
+     *
+     * @param collection
+     */
+    select(collection) {
+        return new ObservableDbSelect(this.db, collection);
+    }
+    /**
+     *
+     * @param collection
+     * @param record
+     */
+    insert(collection, record) {
+        const event = {
+            db: this.getSchema().name,
+            collection: collection,
+            keyPath: this.getCollectionKeyPath(collection),
+            key: this.createId(),
+            record: record,
+        };
+        record[event.keyPath] = event.key;
+        record["created_at"] = new Date();
+        record["updated_at"] = new Date();
+        return this.db.add(collection, record).then(() => {
+            this.notifyListeners(collection, Db_1.DbEvent.INSERTED, event);
+            return event;
         });
     }
     /**
      *
      * @param collection
      * @param record
-     * @param key
      */
-    put(collection, record, key) {
-        return this.db.put(collection, record, key).then((key) => {
-            this._notify(collection, WsDbInterfaces_1.WsDbActions.UPDATED, record);
-            return key;
+    update(collection, record) {
+        const keyPath = this.getCollectionKeyPath(collection);
+        const event = {
+            db: this.getSchema().name,
+            collection: collection,
+            keyPath: keyPath,
+            key: record[keyPath],
+            record: record,
+        };
+        record["updated_at"] = new Date();
+        return this.db.put(collection, record).then(() => {
+            this.notifyListeners(collection, Db_1.DbEvent.UPDATED, event);
+            return event;
         });
+    }
+    /**
+     *
+     * @param collection
+     * @param record
+     */
+    upsert(collection, record) {
+        const key = record[this.getCollectionKeyPath(collection)];
+        return this.db
+            .get(collection, key)
+            .then((old) => old ? this.update(collection, record) : this.insert(collection, record));
     }
     /**
      *
@@ -61,34 +123,29 @@ class ObservableDb {
      * @param id
      */
     delete(collection, id) {
-        return this.db.delete(collection, id).then((id) => {
-            this._notify(collection, WsDbInterfaces_1.WsDbActions.DELETED, id);
-            return id;
+        const event = {
+            db: this.getSchema().name,
+            collection: collection,
+            keyPath: this.getCollectionKeyPath(collection),
+            key: id,
+        };
+        return this.db.delete(collection, id).then(() => {
+            this.notifyListeners(collection, Db_1.DbEvent.DELETED, event);
+            return event;
         });
     }
-    /**
-     *
-     * @param collection
-     * @param query
-     */
-    query(collection, query) {
-        return this.db.query(collection, query);
-    }
-    /**
-     *
-     * @param collection
-     * @param query
-     */
-    get(collection, query) {
-        return this.db.get(collection, query);
-    }
     addListener(collection, key, listener) {
-        const dispatch = this.listeners[collection];
-        dispatch.register(key, listener);
+        const dispacher = this.listeners[collection];
+        if (!dispacher)
+            throw new Error("Couldn't find an event dispatcher for collection: " + collection);
+        else {
+            dispacher.register(key, listener);
+        }
     }
     removeListener(collection, key, listener) {
-        const dispatch = this.listeners[collection];
-        dispatch.unregister(key, listener);
+        const dispatcher = this.listeners[collection];
+        if (dispatcher)
+            dispatcher.unregister(key, listener);
     }
 }
-exports.default = ObservableDb;
+exports.ObservableDb = ObservableDb;

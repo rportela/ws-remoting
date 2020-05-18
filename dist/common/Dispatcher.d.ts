@@ -13,14 +13,14 @@ export default class Dispatcher {
      * @param key
      * @param listener
      */
-    register(key: string, listener: any): boolean;
+    register(key: string, listener: (params: any) => void): boolean;
     /**
      * This method removes a listener from our listener bag of arrays.
      *
      * @param key
      * @param dispacher
      */
-    unregister(key: string, listener: any): boolean;
+    unregister(key: string, listener: (params: any) => void): boolean;
     /**
      * This method dispatches an event to all listeners of that specific key;
      * @param key

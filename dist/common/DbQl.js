@@ -147,6 +147,10 @@ exports.DbOrderBy = DbOrderBy;
  *
  */
 class DbSelect {
+    from(name) {
+        this._name = name;
+        return this;
+    }
     where(filter) {
         this._where = new DbFilterExpression(filter);
         return this;
@@ -187,16 +191,8 @@ class DbSelect {
     }
 }
 exports.DbSelect = DbSelect;
-var DbEvent;
-(function (DbEvent) {
-    DbEvent["INSERTED"] = "INSERTED";
-    DbEvent["UPDATED"] = "UPDATED";
-    DbEvent["DELETED"] = "DELETED";
-    DbEvent["UPGRADED"] = "UPGRADED";
-})(DbEvent = exports.DbEvent || (exports.DbEvent = {}));
-class DbSaveEvent {
-}
-exports.DbSaveEvent = DbSaveEvent;
-class DbDeleteEvent {
-}
-exports.DbDeleteEvent = DbDeleteEvent;
+exports.DbEvent = {
+    INSERTED: "INSERTED",
+    UPDATED: "UPDATED",
+    DELETED: "DELETED",
+};

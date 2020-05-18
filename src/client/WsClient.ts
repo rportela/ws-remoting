@@ -1,6 +1,5 @@
 import Dispatcher from "../common/Dispatcher";
-import WsRequest from "../common/WsRequest";
-import { WsResponse, WsResponseType } from "../common/WsResponse";
+import { WsRequest, WsResponse, WsResponseType } from "../common/WsRemoting";
 
 export const WsClientAction = {
   CONNECT: "CONNECT",
@@ -114,12 +113,14 @@ export class WsClient {
     } else {
       if (response.id) {
         const message: WsRequest = this.buffer[response.id];
-        if (WsResponseType.SUCCESS === response.responseType) {
-          message.resolve(response.result);
-        } else {
-          message.reject(new Error(response.error));
+        if (message) {
+          if (WsResponseType.SUCCESS === response.responseType) {
+            message.resolve(response.result);
+          } else {
+            message.reject(new Error(response.error));
+          }
+          delete this.buffer[response.id];
         }
-        delete this.buffer[response.id];
       } else {
         console.error(response);
         console.trace();

@@ -1,12 +1,26 @@
-import { Db, DbQuery } from "../common/Db";
-import DbSchema from "../common/DbSchema";
+import { Db, DbSchema, DbSelect, DbSchemaCollection } from "../common/Db";
+/**
+ * This class implements an IndexedDB Select statement.
+ * It is able to filter the results using the where clause.
+ * It needs an index for the initial order by. Subsequent order by clauses are executed
+ * on the resulting array.
+ *
+ * @author Rodrigo Portela
+ */
+export declare class ClientDbSelect<T> extends DbSelect<T> {
+    db: Promise<IDBDatabase>;
+    schema: DbSchemaCollection;
+    constructor(db: Promise<IDBDatabase>, schema: DbSchemaCollection);
+    private _createCursorRequest;
+    first(): Promise<T>;
+    toArray(): Promise<T[]>;
+}
 /**
  * This class wraps a local indexedb and exposes method to allow syncing and adding;
  *
  * @author Rodrigo Portela
  */
-export default class ClientDb implements Db {
-    private db;
+export declare class ClientDb implements Db {
     private opening;
     private schema;
     private listeners;
@@ -20,39 +34,17 @@ export default class ClientDb implements Db {
      * @param schema
      */
     constructor(schema: DbSchema);
-    /**
-     *
-     * @param collection
-     * @param record
-     */
-    add(collection: string, record: any, key?: IDBValidKey): Promise<IDBValidKey>;
-    /**
-     *
-     * @param collection
-     * @param record
-     */
-    put(collection: string, record: any, key?: IDBValidKey): Promise<IDBValidKey>;
+    getSchema(): DbSchema;
+    getCollectionSchema(collection: string): DbSchemaCollection;
+    select<T>(collection: string): DbSelect<T>;
+    insert<T>(collection: string, record: T): Promise<T>;
+    update<T>(collection: string, record: T): Promise<T>;
     /**
      *
      * @param collection
      * @param id
      */
     delete(collection: string, id: string): Promise<string>;
-    /**
-     *
-     */
-    getSchema(): DbSchema;
-    /**
-     *
-     */
-    get(collection: string, query: DbQuery): Promise<unknown>;
-    /**
-     *
-     * @param collection
-     * @param query
-     * @param direction
-     */
-    query(collection: string, query?: DbQuery, direction?: IDBCursorDirection): Promise<any[]>;
     addListener(collection: string, key: string, listener: (params: any) => void): void;
     removeListener(collection: string, key: string, listener: (params: any) => void): void;
     notifyListener(collection: string, key: string, params: any): void;

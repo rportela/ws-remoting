@@ -1,41 +1,58 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+const Db_1 = require("../common/Db");
+const WsDb_1 = require("../common/WsDb");
 const WsServer_1 = require("./WsServer");
-const WsDbActions_1 = require("../common/WsDbActions");
 class WsDbServer extends WsServer_1.WsServer {
     constructor(databases, options) {
         super(options);
-        this.on_inserted = (sender, params) => {
-            this.getDatabase(params.db)
-                .add(params.name, params.record)
-                .then(() => this.broadcast(WsDbActions_1.default.INSERTED, params, sender));
+        this.onInsert = (sender, event) => {
+            this.getDatabase(event.db)
+                .insert(event.collection, event.record)
+                .then(() => {
+                this.broadcast(WsDb_1.WsDbEvent.INSERTED, event, sender);
+            });
         };
-        this.on_updated = (sender, params) => {
-            this.getDatabase(params.db)
-                .put(params.name, params.record)
-                .then(() => this.broadcast(WsDbActions_1.default.UPDATED, params, sender));
+        this.onUpdate = (sender, event) => {
+            this.getDatabase(event.db)
+                .update(event.collection, event.record)
+                .then(() => {
+                this.broadcast(WsDb_1.WsDbEvent.UPDATED, event, sender);
+            });
         };
-        this.on_deleted = (sender, params) => {
-            this.getDatabase(params.db)
-                .delete(params.name, params.key)
-                .then(() => this.broadcast(WsDbActions_1.default.DELETED, params, sender));
+        this.onDelete = (sender, event) => {
+            this.getDatabase(event.db)
+                .delete(event.collection, event.key)
+                .then(() => {
+                this.broadcast(WsDb_1.WsDbEvent.DELETED, event, sender);
+            });
         };
-        this.on_get_schema = (sender, db_name) => {
-            return this.getDatabase(db_name).getSchema();
+        this.onSchema = (sender, event) => this.databases.map((d) => d.getSchema());
+        this.onQuery = (sender, event) => {
+            const select = this.getDatabase(event.db).select(event.collection);
+            select._where = event.where
+                ? new Db_1.DbFilterExpression(event.where)
+                : undefined;
+            select._order = event.order;
+            select._offset = event.offset;
+            select._limit = event.limit;
+            return select.toArray();
         };
-        this.on_get = (sender, params) => {
-            return this.getDatabase(params.db).get(params.name, params.query);
-        };
-        this.on_query = (sender, params) => {
-            return this.getDatabase(params.db).query(params.name, params.query);
+        this.onScalar = (sender, event) => {
+            const select = this.getDatabase(event.db).select(event.collection);
+            select._where = event.where
+                ? new Db_1.DbFilterExpression(event.where)
+                : undefined;
+            select._order = event.order;
+            return select.first();
         };
         this.databases = databases;
-        this.register(WsDbActions_1.default.INSERTED, this.on_inserted);
-        this.register(WsDbActions_1.default.UPDATED, this.on_updated);
-        this.register(WsDbActions_1.default.DELETED, this.on_deleted);
-        this.register(WsDbActions_1.default.SCHEMA, this.on_get_schema);
-        this.register(WsDbActions_1.default.GET, this.on_get);
-        this.register(WsDbActions_1.default.QUERY, this.on_query);
+        this.register(WsDb_1.WsDbEvent.INSERTED, this.onInsert);
+        this.register(WsDb_1.WsDbEvent.UPDATED, this.onUpdate);
+        this.register(WsDb_1.WsDbEvent.DELETED, this.onDelete);
+        this.register(WsDb_1.WsDbEvent.SCHEMA, this.onSchema);
+        this.register(WsDb_1.WsDbEvent.SCALAR, this.onScalar);
+        this.register(WsDb_1.WsDbEvent.QUERY, this.onQuery);
     }
     getDatabase(name) {
         for (const db of this.databases)

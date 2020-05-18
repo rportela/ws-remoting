@@ -2,7 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const WebSocket = require("ws");
 const Dispatcher_1 = require("../common/Dispatcher");
-const WsResponse_1 = require("../common/WsResponse");
+const WsRemoting_1 = require("../common/WsRemoting");
 /**
  * This class implements a remoting server.
  * Use this to realtime expose functionality to any app you choose.
@@ -41,38 +41,46 @@ class WsServer {
      */
     receiveRequest(ws, message) {
         //console.log(ws.id, message);
-        const response = new WsResponse_1.WsResponse();
+        const response = new WsRemoting_1.WsResponse();
         try {
             const request = JSON.parse(message);
             if (!request.id) {
-                response.responseType = WsResponse_1.WsResponseType.ERROR;
+                response.responseType = WsRemoting_1.WsResponseType.ERROR;
                 response.error =
                     "You need to provide a message id to track the result.";
             }
             else {
                 response.id = request.id;
                 if (!request.action) {
-                    response.responseType = WsResponse_1.WsResponseType.ERROR;
+                    response.responseType = WsRemoting_1.WsResponseType.ERROR;
                     response.error = "Your message needs to have an 'action' attribute.";
                 }
                 else {
                     const action = this.actions[request.action];
                     if (!action) {
-                        response.responseType = WsResponse_1.WsResponseType.ERROR;
+                        response.responseType = WsRemoting_1.WsResponseType.ERROR;
                         response.error = "Action not found: " + request.action;
                     }
                     else {
                         response.result = action(ws.id, request.params);
-                        response.responseType = WsResponse_1.WsResponseType.SUCCESS;
+                        response.responseType = WsRemoting_1.WsResponseType.SUCCESS;
                     }
                 }
             }
         }
         catch (error) {
             response.error = error.toString();
-            response.responseType = WsResponse_1.WsResponseType.ERROR;
+            response.responseType = WsRemoting_1.WsResponseType.ERROR;
         }
-        ws.send(JSON.stringify(response));
+        if (response.result && response.result.then) {
+            const p = response.result;
+            p.then((actualResult) => {
+                response.result = actualResult;
+                ws.send(JSON.stringify(response));
+            });
+        }
+        else
+            ws.send(JSON.stringify(response));
     }
     /**
      * This method broadcasts a message to all sockets connected.
@@ -84,7 +92,7 @@ class WsServer {
      */
     broadcast(action, result, ignore = undefined) {
         const broadmsg = JSON.stringify({
-            responseType: WsResponse_1.WsResponseType.BROADCAST,
+            responseType: WsRemoting_1.WsResponseType.BROADCAST,
             action: action,
             result: result,
         });

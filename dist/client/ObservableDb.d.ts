@@ -1,19 +1,24 @@
-import { Db, DbQuery, DbSchema } from "../common/Interfaces";
-/**
- *
- * @author Rodrigo Portela
- */
-export default class ObservableDb implements Db {
-    private db;
-    private listeners;
+import { Db, DbSchemaCollection, DbKey, DbSelect, DbSchema, DbSaveEvent, DbDeleteEvent } from "../common/Db";
+import BrowserDb from "./BrowserDb";
+export declare class ObservableDbSelect<T> extends DbSelect<T> {
+    db: BrowserDb;
+    collection: string;
+    constructor(db: BrowserDb, collection: string);
+    first(): Promise<T>;
+    toArray(): Promise<T[]>;
+}
+export declare class ObservableDb implements Db {
+    db: BrowserDb;
+    listeners: any;
     constructor(schema: DbSchema);
+    createId(): string;
     /**
      *
      * @param collection
-     * @param key
+     * @param action
      * @param params
      */
-    private _notify;
+    notifyListeners(collection: string, action: string, params: any): void;
     /**
      *
      */
@@ -21,35 +26,42 @@ export default class ObservableDb implements Db {
     /**
      *
      * @param collection
-     * @param record
-     * @param key
      */
-    add(collection: string, record: any, key?: IDBValidKey): Promise<IDBValidKey>;
+    getCollectionSchema(collection: string): DbSchemaCollection;
+    /**
+     *
+     * @param collection
+     */
+    getCollectionKeyPath(collection: string): string | null;
+    /**
+     *
+     * @param collection
+     */
+    select<T>(collection: string): DbSelect<T>;
     /**
      *
      * @param collection
      * @param record
-     * @param key
      */
-    put(collection: string, record: any, key?: IDBValidKey): Promise<IDBValidKey>;
+    insert<T>(collection: string, record: T): Promise<DbSaveEvent>;
+    /**
+     *
+     * @param collection
+     * @param record
+     */
+    update<T>(collection: string, record: T): Promise<DbSaveEvent>;
+    /**
+     *
+     * @param collection
+     * @param record
+     */
+    upsert<T>(collection: string, record: T): Promise<DbSaveEvent>;
     /**
      *
      * @param collection
      * @param id
      */
-    delete(collection: string, id: string): Promise<string>;
-    /**
-     *
-     * @param collection
-     * @param query
-     */
-    query(collection: string, query: DbQuery): Promise<any[]>;
-    /**
-     *
-     * @param collection
-     * @param query
-     */
-    get(collection: string, query: DbQuery): Promise<any>;
-    addListener(collection: string, key: string, listener: (...params: any) => void): void;
-    removeListener(collection: string, key: string, listener: (...parans: any) => void): void;
+    delete(collection: string, id: DbKey): Promise<DbDeleteEvent>;
+    addListener(collection: string, key: string, listener: (params: any) => void): void;
+    removeListener(collection: string, key: string, listener: (params: any) => void): void;
 }

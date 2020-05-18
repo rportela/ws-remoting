@@ -11,6 +11,7 @@ export default class WsDb implements Db {
     private _onRecordDeleted;
     private _receiveSchema;
     private _sync;
+    private _query_data;
     private _dispatchErrors;
     private _notify;
     /**
@@ -51,6 +52,12 @@ export default class WsDb implements Db {
      * @param query
      */
     get(collection: string, query: DbQuery): Promise<any>;
+    queryByIndex(collection: string, index: string, query: DbQuery): Promise<any[]>;
+    getByIndex(collection: string, index: string, query: DbQuery): Promise<any>;
+    first(collection: string, query: DbQuery): Promise<any>;
+    firstByIndex(collection: string, index: string, query: DbQuery): Promise<any>;
+    last(collection: string, query: DbQuery): Promise<any>;
+    lastByIndex(collection: string, index: string, query: DbQuery): Promise<any>;
     /**
      *
      * @param collection
@@ -64,5 +71,5 @@ export default class WsDb implements Db {
      * @param key
      * @param listener
      */
-    removeListener(collection: string, key: string, listener: (...params: any[]) => any): Promise<void>;
+    removeListener(collection: string, key: string, listener: (...params: any[]) => any): Promise<any>;
 }

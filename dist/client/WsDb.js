@@ -48,6 +48,13 @@ class WsDb {
                 });
             }
         };
+        this._query_data = () => {
+            for (const col of this.db.getSchema().collections) {
+                this.db.lastByIndex(col.name, "updatedAt").then((record) => {
+                    console.log("last by index", record);
+                });
+            }
+        };
         this._dispatchErrors = (error) => {
             console.error(error);
         };
@@ -153,6 +160,24 @@ class WsDb {
      */
     get(collection, query) {
         return this.opening.then((db) => db.get(collection, query));
+    }
+    queryByIndex(collection, index, query) {
+        return this.opening.then((db) => db.queryByIndex(collection, index, query));
+    }
+    getByIndex(collection, index, query) {
+        return this.opening.then((db) => db.getByIndex(collection, index, query));
+    }
+    first(collection, query) {
+        return this.opening.then((db) => db.first(collection, query));
+    }
+    firstByIndex(collection, index, query) {
+        return this.opening.then((db) => db.firstByIndex(collection, index, query));
+    }
+    last(collection, query) {
+        return this.opening.then((db) => db.last(collection, query));
+    }
+    lastByIndex(collection, index, query) {
+        return this.opening.then((db) => db.lastByIndex(collection, index, query));
     }
     /**
      *

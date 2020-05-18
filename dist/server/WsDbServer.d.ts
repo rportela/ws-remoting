@@ -1,14 +1,14 @@
 import * as WebSocket from "ws";
-import { WsServer } from "./WsServer";
 import { Db } from "../common/Db";
+import { WsServer } from "./WsServer";
 export default class WsDbServer extends WsServer {
     private databases;
     constructor(databases: Db[], options: WebSocket.ServerOptions);
+    private onInsert;
+    private onUpdate;
+    private onDelete;
+    private onSchema;
+    private onQuery;
+    private onScalar;
     getDatabase(name: string): Db;
-    private on_inserted;
-    private on_updated;
-    private on_deleted;
-    private on_get_schema;
-    private on_get;
-    private on_query;
 }

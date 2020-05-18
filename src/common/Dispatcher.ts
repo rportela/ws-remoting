@@ -14,7 +14,7 @@ export default class Dispatcher {
    * @param key
    * @param listener
    */
-  register(key: string, listener: any): boolean {
+  register(key: string, listener: (params: any) => void): boolean {
     let listeners: any[] = this.dispatchers[key];
     if (!listeners) {
       listeners = [listener];
@@ -37,7 +37,7 @@ export default class Dispatcher {
    * @param key
    * @param dispacher
    */
-  unregister(key: string, listener: any): boolean {
+  unregister(key: string, listener: (params: any) => void): boolean {
     let listeners: any[] = this.dispatchers[key];
     if (!listeners) return false;
     let index = listeners.indexOf(listener);

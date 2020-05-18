@@ -81,10 +81,12 @@ export declare class DbOrderBy {
  *
  */
 export declare abstract class DbSelect<T> {
+    _name: string;
     _where: DbFilterExpression;
     _order: DbOrderBy;
     _offset: number;
     _limit: number;
+    from(name: string): DbSelect<T>;
     where(filter: DbFilter): DbSelect<T>;
     and(filter: DbFilter): DbSelect<T>;
     or(filter: DbFilter): DbSelect<T>;
@@ -92,8 +94,9 @@ export declare abstract class DbSelect<T> {
     limit(limit: number): DbSelect<T>;
     orderBy(name: string, descending?: boolean): DbSelect<T>;
     thenOrderBy(name: string, descending?: boolean): DbSelect<T>;
-    abstract first(): Promise<T>;
-    abstract toArray(): Promise<T[]>;
+    abstract first(): T;
+    abstract toArray(): T[];
+    abstract apply<G>(processor: (input: T) => G): G;
 }
 export declare type DbKey = string | number;
 export interface DbSchemaIndex {
@@ -111,31 +114,13 @@ export interface DbSchema {
     name: string;
     collections: DbSchemaCollection[];
 }
-export declare enum DbEvent {
-    INSERTED = "INSERTED",
-    UPDATED = "UPDATED",
-    DELETED = "DELETED",
-    UPGRADED = "UPGRADED"
-}
-export declare class DbSaveEvent {
-    db: string;
-    collection: string;
-    keyPath: string;
-    key: DbKey;
-    record: any;
-}
-export declare class DbDeleteEvent {
-    db: string;
-    collection: string;
-    keyPath: string;
-    key: DbKey;
-}
+export declare const DbEvent: {
+    INSERTED: string;
+    UPDATED: string;
+    DELETED: string;
+};
 export interface Db {
-    getSchema(): DbSchema;
-    getCollectionSchema(collection: string): DbSchemaCollection;
     select<T>(collection: string): DbSelect<T>;
-    insert<T>(collection: string, record: T): Promise<DbSaveEvent>;
-    update<T>(collection: string, record: T): Promise<DbSaveEvent>;
-    upsert<T>(collection: string, record: T): Promise<DbSaveEvent>;
-    delete(collection: string, id: DbKey): Promise<DbDeleteEvent>;
+    upsert(collection: string, record: any): DbKey;
+    delete(collection: string, id: string): string;
 }

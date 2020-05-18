@@ -1,10 +1,7 @@
 import * as WebSocket from "ws";
-import { WsServer, WsServerAction } from "./WsServer";
-import { Db, DbQuery } from "../common/Db";
-import WsDbActions from "../common/WsDbActions";
-import WsDbSaveParams from "../common/WsDbSaveParams";
-import WsDbDeleteParams from "../common/WsDbDeleteParams";
-import WsDbQueryParams from "../common/WsDbQueryParams";
+import { Db, DbDeleteEvent, DbFilterExpression, DbSaveEvent } from "../common/Db";
+import { WsDbEvent, WsDbQueryParams, WsDbScalarParams } from "../common/WsDb";
+import { WsServer } from "./WsServer";
 
 export default class WsDbServer extends WsServer {
   private databases: Db[];
@@ -12,47 +9,64 @@ export default class WsDbServer extends WsServer {
   constructor(databases: Db[], options: WebSocket.ServerOptions) {
     super(options);
     this.databases = databases;
-    this.register(WsDbActions.INSERTED, this.on_inserted);
-    this.register(WsDbActions.UPDATED, this.on_updated);
-    this.register(WsDbActions.DELETED, this.on_deleted);
-    this.register(WsDbActions.SCHEMA, this.on_get_schema);
-    this.register(WsDbActions.GET, this.on_get);
-    this.register(WsDbActions.QUERY, this.on_query);
+    this.register(WsDbEvent.INSERTED, this.onInsert);
+    this.register(WsDbEvent.UPDATED, this.onUpdate);
+    this.register(WsDbEvent.DELETED, this.onDelete);
+    this.register(WsDbEvent.SCHEMA, this.onSchema);
+    this.register(WsDbEvent.SCALAR, this.onScalar);
+    this.register(WsDbEvent.QUERY, this.onQuery);
   }
+
+  private onInsert = (sender: string, event: DbSaveEvent) => {
+    this.getDatabase(event.db)
+      .insert(event.collection, event.record)
+      .then(() => {
+        this.broadcast(WsDbEvent.INSERTED, event, sender);
+      });
+  };
+
+  private onUpdate = (sender: string, event: DbSaveEvent) => {
+    this.getDatabase(event.db)
+      .update(event.collection, event.record)
+      .then(() => {
+        this.broadcast(WsDbEvent.UPDATED, event, sender);
+      });
+  };
+
+  private onDelete = (sender: string, event: DbDeleteEvent) => {
+    this.getDatabase(event.db)
+      .delete(event.collection, event.key)
+      .then(() => {
+        this.broadcast(WsDbEvent.DELETED, event, sender);
+      });
+  };
+
+  private onSchema = (sender: string, event: any) =>
+    this.databases.map((d) => d.getSchema());
+
+  private onQuery = (sender: string, event: WsDbQueryParams) => {
+    const select = this.getDatabase(event.db).select(event.collection);
+    select._where = event.where
+      ? new DbFilterExpression(event.where)
+      : undefined;
+    select._order = event.order;
+    select._offset = event.offset;
+    select._limit = event.limit;
+    return select.toArray();
+  };
+
+  private onScalar = (sender: string, event: WsDbScalarParams) => {
+    const select = this.getDatabase(event.db).select(event.collection);
+    select._where = event.where
+      ? new DbFilterExpression(event.where)
+      : undefined;
+    select._order = event.order;
+    return select.first();
+  };
 
   getDatabase(name: string): Db {
     for (const db of this.databases)
       if (name === db.getSchema().name) return db;
     throw new Error("Database not found: " + name);
   }
-
-  private on_inserted = (sender: string, params: WsDbSaveParams) => {
-    this.getDatabase(params.db)
-      .add(params.name, params.record)
-      .then(() => this.broadcast(WsDbActions.INSERTED, params, sender));
-  };
-
-  private on_updated = (sender: string, params: WsDbSaveParams) => {
-    this.getDatabase(params.db)
-      .put(params.name, params.record)
-      .then(() => this.broadcast(WsDbActions.UPDATED, params, sender));
-  };
-
-  private on_deleted = (sender: string, params: WsDbDeleteParams) => {
-    this.getDatabase(params.db)
-      .delete(params.name, params.key)
-      .then(() => this.broadcast(WsDbActions.DELETED, params, sender));
-  };
-
-  private on_get_schema = (sender: string, db_name: string) => {
-    return this.getDatabase(db_name).getSchema();
-  };
-
-  private on_get = (sender: string, params: WsDbQueryParams) => {
-    return this.getDatabase(params.db).get(params.name, params.query);
-  };
-
-  private on_query = (sender: string, params: WsDbQueryParams) => {
-    return this.getDatabase(params.db).query(params.name, params.query);
-  };
 }

@@ -10,8 +10,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const Dispatcher_1 = require("../common/Dispatcher");
-const WsRequest_1 = require("../common/WsRequest");
-const WsResponse_1 = require("../common/WsResponse");
+const WsRemoting_1 = require("../common/WsRemoting");
 exports.WsClientAction = {
     CONNECT: "CONNECT",
     DISCONNECT: "DISCONNECT",
@@ -91,19 +90,21 @@ class WsClient {
          */
         this.receiveResponse = (ev) => {
             const response = JSON.parse(ev.data);
-            if (WsResponse_1.WsResponseType.BROADCAST === response.responseType) {
+            if (WsRemoting_1.WsResponseType.BROADCAST === response.responseType) {
                 this.listeners.dispatch(response.action, response.result);
             }
             else {
                 if (response.id) {
                     const message = this.buffer[response.id];
-                    if (WsResponse_1.WsResponseType.SUCCESS === response.responseType) {
-                        message.resolve(response.result);
+                    if (message) {
+                        if (WsRemoting_1.WsResponseType.SUCCESS === response.responseType) {
+                            message.resolve(response.result);
+                        }
+                        else {
+                            message.reject(new Error(response.error));
+                        }
+                        delete this.buffer[response.id];
                     }
-                    else {
-                        message.reject(new Error(response.error));
-                    }
-                    delete this.buffer[response.id];
                 }
                 else {
                     console.error(response);
@@ -141,7 +142,7 @@ class WsClient {
         return __awaiter(this, void 0, void 0, function* () {
             return new Promise((resolve, reject) => {
                 var _a;
-                const msg = new WsRequest_1.default(action, params, resolve, reject);
+                const msg = new WsRemoting_1.WsRequest(action, params, resolve, reject);
                 this.buffer[msg.id] = msg;
                 if (this.is_connected) {
                     msg.sent_at = new Date();

@@ -1,7 +1,6 @@
 import * as WebSocket from "ws";
 import Dispatcher from "../common/Dispatcher";
-import { WsResponse, WsResponseType } from "../common/WsResponse";
-import WsRequest from "../common/WsRequest";
+import { WsResponse, WsResponseType, WsRequest } from "../common/WsRemoting";
 
 export interface WsServerAction {
   (sender: string, params: any): any;
@@ -49,7 +48,13 @@ export class WsServer {
       response.error = error.toString();
       response.responseType = WsResponseType.ERROR;
     }
-    ws.send(JSON.stringify(response));
+    if (response.result && response.result.then) {
+      const p: Promise<any> = response.result;
+      p.then((actualResult) => {
+        response.result = actualResult;
+        ws.send(JSON.stringify(response));
+      });
+    } else ws.send(JSON.stringify(response));
   }
 
   /**
