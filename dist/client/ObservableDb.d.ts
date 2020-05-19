@@ -43,25 +43,25 @@ export declare class ObservableDb implements Db {
      * @param collection
      * @param record
      */
-    insert<T>(collection: string, record: T): Promise<DbSaveEvent>;
+    insert<T>(collection: string, record: T, notify?: boolean): Promise<DbSaveEvent>;
     /**
      *
      * @param collection
      * @param record
      */
-    update<T>(collection: string, record: T): Promise<DbSaveEvent>;
+    update<T>(collection: string, record: T, notify?: boolean): Promise<DbSaveEvent>;
     /**
      *
      * @param collection
      * @param record
      */
-    upsert<T>(collection: string, record: T): Promise<DbSaveEvent>;
+    upsert<T>(collection: string, record: T, notify?: boolean): Promise<DbSaveEvent>;
     /**
      *
      * @param collection
      * @param id
      */
-    delete(collection: string, id: DbKey): Promise<DbDeleteEvent>;
+    delete(collection: string, id: DbKey, notify?: boolean): Promise<DbDeleteEvent>;
     addListener(collection: string, key: string, listener: (params: any) => void): void;
     removeListener(collection: string, key: string, listener: (params: any) => void): void;
 }

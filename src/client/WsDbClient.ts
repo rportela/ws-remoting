@@ -84,7 +84,9 @@ export default class WsDbClient {
         };
         this.socket.call(WsDbEvent.QUERY, query).then((results: any[]) => {
           if (results && results.forEach)
-            results.forEach((result) => db.upsert(collection.name, result));
+            results.forEach((result) =>
+              db.upsert(collection.name, result, true)
+            );
         });
       });
   }

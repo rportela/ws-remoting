@@ -97,7 +97,7 @@ class WsDbClient {
             };
             this.socket.call(WsDb_1.WsDbEvent.QUERY, query).then((results) => {
                 if (results && results.forEach)
-                    results.forEach((result) => db.upsert(collection.name, result));
+                    results.forEach((result) => db.upsert(collection.name, result, true));
             });
         });
     }

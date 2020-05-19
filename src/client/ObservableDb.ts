@@ -98,12 +98,17 @@ export class ObservableDb implements Db {
    * @param collection
    * @param record
    */
-  insert<T>(collection: string, record: T): Promise<DbSaveEvent> {
+  insert<T>(
+    collection: string,
+    record: T,
+    notify: boolean = true
+  ): Promise<DbSaveEvent> {
+    const keyPath = this.getCollectionKeyPath(collection);
     const event: DbSaveEvent = {
       db: this.getSchema().name,
       collection: collection,
-      keyPath: this.getCollectionKeyPath(collection),
-      key: this.createId(),
+      keyPath: keyPath,
+      key: record[keyPath] || this.createId(),
       record: record,
     };
 
@@ -112,7 +117,7 @@ export class ObservableDb implements Db {
     record["updated_at"] = new Date();
 
     return this.db.add(collection, record).then(() => {
-      this.notifyListeners(collection, DbEvent.INSERTED, event);
+      if (notify) this.notifyListeners(collection, DbEvent.INSERTED, event);
       return event;
     });
   }
@@ -122,7 +127,11 @@ export class ObservableDb implements Db {
    * @param collection
    * @param record
    */
-  update<T>(collection: string, record: T): Promise<DbSaveEvent> {
+  update<T>(
+    collection: string,
+    record: T,
+    notify: boolean = true
+  ): Promise<DbSaveEvent> {
     const keyPath = this.getCollectionKeyPath(collection);
     const event: DbSaveEvent = {
       db: this.getSchema().name,
@@ -133,7 +142,7 @@ export class ObservableDb implements Db {
     };
     record["updated_at"] = new Date();
     return this.db.put(collection, record).then(() => {
-      this.notifyListeners(collection, DbEvent.UPDATED, event);
+      if (notify) this.notifyListeners(collection, DbEvent.UPDATED, event);
       return event;
     });
   }
@@ -143,12 +152,18 @@ export class ObservableDb implements Db {
    * @param collection
    * @param record
    */
-  upsert<T>(collection: string, record: T): Promise<DbSaveEvent> {
+  upsert<T>(
+    collection: string,
+    record: T,
+    notify: boolean = true
+  ): Promise<DbSaveEvent> {
     const key = record[this.getCollectionKeyPath(collection)];
     return this.db
       .get(collection, key)
       .then((old: any) =>
-        old ? this.update(collection, record) : this.insert(collection, record)
+        old
+          ? this.update(collection, record, notify)
+          : this.insert(collection, record, notify)
       );
   }
 
@@ -157,7 +172,11 @@ export class ObservableDb implements Db {
    * @param collection
    * @param id
    */
-  delete(collection: string, id: DbKey): Promise<DbDeleteEvent> {
+  delete(
+    collection: string,
+    id: DbKey,
+    notify: boolean = true
+  ): Promise<DbDeleteEvent> {
     const event: DbDeleteEvent = {
       db: this.getSchema().name,
       collection: collection,
@@ -165,7 +184,7 @@ export class ObservableDb implements Db {
       key: id,
     };
     return this.db.delete(collection, id).then(() => {
-      this.notifyListeners(collection, DbEvent.DELETED, event);
+      if (notify) this.notifyListeners(collection, DbEvent.DELETED, event);
       return event;
     });
   }

@@ -70,19 +70,21 @@ class ObservableDb {
      * @param collection
      * @param record
      */
-    insert(collection, record) {
+    insert(collection, record, notify = true) {
+        const keyPath = this.getCollectionKeyPath(collection);
         const event = {
             db: this.getSchema().name,
             collection: collection,
-            keyPath: this.getCollectionKeyPath(collection),
-            key: this.createId(),
+            keyPath: keyPath,
+            key: record[keyPath] || this.createId(),
             record: record,
         };
         record[event.keyPath] = event.key;
         record["created_at"] = new Date();
         record["updated_at"] = new Date();
         return this.db.add(collection, record).then(() => {
-            this.notifyListeners(collection, Db_1.DbEvent.INSERTED, event);
+            if (notify)
+                this.notifyListeners(collection, Db_1.DbEvent.INSERTED, event);
             return event;
         });
     }
@@ -91,7 +93,7 @@ class ObservableDb {
      * @param collection
      * @param record
      */
-    update(collection, record) {
+    update(collection, record, notify = true) {
         const keyPath = this.getCollectionKeyPath(collection);
         const event = {
             db: this.getSchema().name,
@@ -102,7 +104,8 @@ class ObservableDb {
         };
         record["updated_at"] = new Date();
         return this.db.put(collection, record).then(() => {
-            this.notifyListeners(collection, Db_1.DbEvent.UPDATED, event);
+            if (notify)
+                this.notifyListeners(collection, Db_1.DbEvent.UPDATED, event);
             return event;
         });
     }
@@ -111,18 +114,20 @@ class ObservableDb {
      * @param collection
      * @param record
      */
-    upsert(collection, record) {
+    upsert(collection, record, notify = true) {
         const key = record[this.getCollectionKeyPath(collection)];
         return this.db
             .get(collection, key)
-            .then((old) => old ? this.update(collection, record) : this.insert(collection, record));
+            .then((old) => old
+            ? this.update(collection, record, notify)
+            : this.insert(collection, record, notify));
     }
     /**
      *
      * @param collection
      * @param id
      */
-    delete(collection, id) {
+    delete(collection, id, notify = true) {
         const event = {
             db: this.getSchema().name,
             collection: collection,
@@ -130,7 +135,8 @@ class ObservableDb {
             key: id,
         };
         return this.db.delete(collection, id).then(() => {
-            this.notifyListeners(collection, Db_1.DbEvent.DELETED, event);
+            if (notify)
+                this.notifyListeners(collection, Db_1.DbEvent.DELETED, event);
             return event;
         });
     }
