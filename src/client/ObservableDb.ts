@@ -1,215 +1,304 @@
-import {
-  Db,
-  DbSchemaCollection,
-  DbKey,
-  DbSelect,
-  DbSchema,
-  DbEvent,
-  DbSaveEvent,
-  DbDeleteEvent,
-} from "../common/Db";
-import BrowserDb from "./BrowserDb";
-import Dispatcher from "../common/Dispatcher";
+import { Db, DbCollectionDropEvent, DbDatabaseDropEvent, DbEventType, DbKey, DbRecordDeleteEvent, DbRecordSaveEvent, DbSchema, DbSchemaCollection, DbSelect, NaiveDbSelect } from "../common/Db";
+import EventEmitter from "../common/EventEmitter";
 
-export class ObservableDbSelect<T> extends DbSelect<T> {
-  db: BrowserDb;
-  collection: string;
-  constructor(db: BrowserDb, collection: string) {
-    super();
-    this.db = db;
-    this.collection = collection;
-  }
+/**
+ * Wraps indexed db functionality with promises for a better developer experience.
+ * And it has an event emmiter attached to it so every operation can be observed from
+ * the UI or any other listener.
+ *
+ * @author Rodrigo Portela
+ */
+export default class ObservableDb implements Db {
+  private schema: DbSchema;
+  private open: Promise<IDBDatabase>;
+  private emitter: EventEmitter;
 
-  first(): Promise<T> {
-    return this.db.first(this.collection, this._where, this._order);
-  }
+  /**
+   * Destroys every previos object store and creates new ones based on schema.
+   * IMPORTANT: all data is deleted from the database.
+   */
+  private onUpgradeNeeded = (event: IDBVersionChangeEvent) => {
+    const target: any = event.target;
+    const db: IDBDatabase = target.result;
+    for (const name of db.objectStoreNames) db.deleteObjectStore(name);
+    this.schema.collections.forEach((col: DbSchemaCollection) => {
+      const store = db.createObjectStore(col.name, {
+        keyPath: col.keyPath,
+        autoIncrement: col.autoIncrement,
+      });
+      if (col.indexes) {
+        for (const idx of col.indexes) {
+          store.createIndex(idx.name, idx.keyPath, { unique: idx.unique });
+        }
+      }
+    });
+    this.emitter.emit(DbEventType.UPGRADED, this);
+  };
 
-  toArray(): Promise<T[]> {
-    return this.db.query(
-      this.collection,
-      this._where,
-      this._order,
-      this._offset,
-      this._limit
-    );
-  }
-}
-
-export class ObservableDb implements Db {
-  db: BrowserDb;
-  listeners: any;
+  /**
+   * Construcs an IDB with a promise that it will either open or a rejection will happen.
+   *
+   * @param schema
+   */
   constructor(schema: DbSchema) {
-    this.db = new BrowserDb(schema);
-    this.listeners = {};
-    schema.collections.forEach(
-      (col) => (this.listeners[col.name] = new Dispatcher())
-    );
+    this.schema = schema;
+    this.emitter = new EventEmitter();
+    this.open = new Promise((resolve, reject) => {
+      const req = indexedDB.open(schema.name, schema.version);
+      req.onerror = () => {
+        reject(req.error);
+        this.emitter.emit(DbEventType.ERROR, req.error);
+      };
+      req.onsuccess = () => {
+        resolve(req.result);
+        this.emitter.emit(DbEventType.OPEN, this);
+      };
+      req.onupgradeneeded = this.onUpgradeNeeded;
+      req.onblocked = () => {
+        const err = new Error(
+          "The database is blocked. You should probably refresh your browser."
+        );
+        reject(err);
+        this.emitter.emit(DbEventType.ERROR, err);
+      };
+    });
   }
 
-  createId(): string {
+  /**
+   * Creates time incremental unique ids.
+   */
+  static createId(): string {
     return new Date().getTime().toString(36) + "_" + Math.random().toString(36);
   }
 
   /**
-   *
-   * @param collection
-   * @param action
-   * @param params
+   * Attaches a listener to a specific event.
+   * @param event
+   * @param listener
    */
-  notifyListeners(collection: string, action: string, params: any) {
-    const listener: Dispatcher = this.listeners[collection];
-    if (listener) listener.dispatch(action, params);
+  on(event: DbEventType, listener: (params: any) => void) {
+    this.emitter.on(event, listener);
   }
 
   /**
+   * Detaches a listener from a specific event.
+   * @param event
+   * @param listener
+   */
+  off(event: DbEventType, listener: (params: any) => void) {
+    this.emitter.off(event, listener);
+  }
+
+  /**
+   * Drops a collection and emits the corresponding event.
    *
+   * @param collection
+   */
+  dropCollection(collection: string): Promise<DbCollectionDropEvent> {
+    return this.open.then((db) => {
+      db.deleteObjectStore(collection);
+      const event: DbCollectionDropEvent = {
+        db: this.schema.name,
+        collection: collection,
+      };
+      this.emitter.emit(DbEventType.DROP_COLLECTION, event);
+      return event;
+    });
+  }
+
+  /**
+   * Closes, drops the entire database and emmits the corresponding event.
+   */
+  drop(): Promise<DbDatabaseDropEvent> {
+    return this.open.then(
+      (db) =>
+        new Promise((resolve, reject) => {
+          try {
+            db.onclose = () => {
+              const event: DbDatabaseDropEvent = {
+                db: this.schema.name,
+              };
+              indexedDB.deleteDatabase(this.schema.name);
+              resolve(event);
+              this.emitter.emit(DbEventType.DROP_DATABASE, event);
+            };
+            db.close();
+          } catch (err) {
+            reject(err);
+          }
+        })
+    );
+  }
+
+  /**
+   * Gets the current schema of the database.
    */
   getSchema(): DbSchema {
-    return this.db.getSchema();
+    return this.schema;
   }
 
   /**
+   * Gets a specific member of a collection by it's key.
+   *
+   * @param collection
+   * @param key
+   */
+  get(collection: string, key: DbKey): Promise<any> {
+    return this.open.then(
+      (db) =>
+        new Promise((resolve, reject) => {
+          const req = db
+            .transaction(collection)
+            .objectStore(collection)
+            .get(key);
+          req.onsuccess = () => resolve(req.result);
+          req.onerror = () => reject(req.error);
+        })
+    );
+  }
+
+  /**
+   * Gets all members of a collection.
    *
    * @param collection
    */
-  getCollectionSchema(collection: string): DbSchemaCollection {
-    return this.db.getSchema().collections.find((c) => c.name === collection);
+  all(collection: string): Promise<any[]> {
+    return this.open.then(
+      (db) =>
+        new Promise((resolve, reject) => {
+          const req = db
+            .transaction(collection)
+            .objectStore(collection)
+            .getAll();
+          req.onsuccess = () => resolve(req.result);
+          req.onerror = () => reject(req.error);
+        })
+    );
   }
 
   /**
-   *
-   * @param collection
-   */
-  getCollectionKeyPath(collection: string): string | null {
-    const colSchema = this.getCollectionSchema(collection);
-    return colSchema ? colSchema.keyPath : null;
-  }
-
-  /**
+   * Creates a select object for a specific collection.
    *
    * @param collection
    */
   select<T>(collection: string): DbSelect<T> {
-    return new ObservableDbSelect(this.db, collection);
+    return new NaiveDbSelect(this, collection);
   }
 
   /**
+   * Adds or updates a record in store with the given value and key.
+   * If the store uses in-line keys and key is specified a "DataError" DOMException will be thrown.
+   * If put() is used, any existing record with the key will be replaced.
+   * If add() is used, and if a record with the key already exists the request will fail, with request's error set to a "ConstraintError" DOMException.
+   * If successful, request's result will be the record's key.
+   * The corresponding event will be emited.
    *
    * @param collection
    * @param record
    */
-  insert<T>(
-    collection: string,
-    record: T,
-    notify: boolean = true
-  ): Promise<DbSaveEvent> {
-    const keyPath = this.getCollectionKeyPath(collection);
-    const event: DbSaveEvent = {
-      db: this.getSchema().name,
-      collection: collection,
-      keyPath: keyPath,
-      key: record[keyPath] || this.createId(),
-      record: record,
-    };
-
-    record[event.keyPath] = event.key;
-    record["created_at"] = new Date();
-    record["updated_at"] = new Date();
-
-    return this.db.add(collection, record).then(() => {
-      if (notify) this.notifyListeners(collection, DbEvent.INSERTED, event);
-      return event;
-    });
+  add(collection: string, record: any): Promise<DbRecordSaveEvent> {
+    return this.open.then(
+      (db) =>
+        new Promise((resolve, reject) => {
+          const store = db
+            .transaction(collection, "readwrite")
+            .objectStore(collection);
+          const req = store.add(record);
+          req.onsuccess = () => {
+            const key: any = req.result;
+            const event: DbRecordSaveEvent = {
+              db: this.schema.name,
+              collection: collection,
+              key: key,
+              keyPath: store.keyPath,
+              record: record,
+            };
+            resolve(event);
+            this.emitter.emit(DbEventType.ADD, event);
+          };
+          req.onerror = () => reject(req.error);
+        })
+    );
   }
 
   /**
+   * Adds or updates a record in store with the given value and key.
+   * If the store uses in-line keys and key is specified a "DataError" DOMException will be thrown.
+   * If put() is used, any existing record with the key will be replaced.
+   * If add() is used, and if a record with the key already exists the request will fail, with request's error set to a "ConstraintError" DOMException.
+   * If successful, request's result will be the record's key.
+   * The corresponding event will be emited.
    *
    * @param collection
    * @param record
    */
-  update<T>(
-    collection: string,
-    record: T,
-    notify: boolean = true
-  ): Promise<DbSaveEvent> {
-    const keyPath = this.getCollectionKeyPath(collection);
-    const event: DbSaveEvent = {
-      db: this.getSchema().name,
-      collection: collection,
-      keyPath: keyPath,
-      key: record[keyPath],
-      record: record,
-    };
-    record["updated_at"] = new Date();
-    return this.db.put(collection, record).then(() => {
-      if (notify) this.notifyListeners(collection, DbEvent.UPDATED, event);
-      return event;
-    });
+  put(collection: string, record: any): Promise<DbRecordSaveEvent> {
+    return this.open.then(
+      (db) =>
+        new Promise((resolve, reject) => {
+          const store = db
+            .transaction(collection, "readwrite")
+            .objectStore(collection);
+          const req = store.put(record);
+          req.onsuccess = () => {
+            const key: any = req.result;
+            const event: DbRecordSaveEvent = {
+              db: this.schema.name,
+              collection: collection,
+              key: key,
+              keyPath: store.keyPath,
+              record: record,
+            };
+            resolve(event);
+            this.emitter.emit(DbEventType.PUT, event);
+          };
+          req.onerror = () => reject(req.error);
+        })
+    );
   }
 
   /**
+   * Deletes records in store with the given key or in the given key range in query.
+   * If successful, request's result will be undefined.
+   * And the corresponding event will be emited.
    *
    * @param collection
-   * @param record
+   * @param key
    */
-  upsert<T>(
-    collection: string,
-    record: T,
-    notify: boolean = true
-  ): Promise<DbSaveEvent> {
-    const key = record[this.getCollectionKeyPath(collection)];
-    return this.db
-      .get(collection, key)
-      .then((old: any) =>
-        old
-          ? this.update(collection, record, notify)
-          : this.insert(collection, record, notify)
-      );
+  delete(collection: string, key: DbKey): Promise<DbRecordDeleteEvent> {
+    return this.open.then(
+      (db) =>
+        new Promise((resolve, reject) => {
+          const store = db
+            .transaction(collection, "readwrite")
+            .objectStore(collection);
+          const req = store.delete(key);
+          req.onsuccess = () => {
+            const event: DbRecordDeleteEvent = {
+              db: this.schema.name,
+              collection: collection,
+              keyPath: store.keyPath,
+              key: key,
+            };
+            resolve(event);
+            this.emitter.emit(DbEventType.DELETE, event);
+          };
+          req.onerror = () => reject(req.error);
+        })
+    );
   }
 
-  /**
-   *
-   * @param collection
-   * @param id
-   */
-  delete(
-    collection: string,
-    id: DbKey,
-    notify: boolean = true
-  ): Promise<DbDeleteEvent> {
-    const event: DbDeleteEvent = {
-      db: this.getSchema().name,
-      collection: collection,
-      keyPath: this.getCollectionKeyPath(collection),
-      key: id,
-    };
-    return this.db.delete(collection, id).then(() => {
-      if (notify) this.notifyListeners(collection, DbEvent.DELETED, event);
-      return event;
-    });
-  }
-
-  addListener(
-    collection: string,
-    key: string,
-    listener: (params: any) => void
-  ) {
-    const dispacher: Dispatcher = this.listeners[collection];
-    if (!dispacher)
-      throw new Error(
-        "Couldn't find an event dispatcher for collection: " + collection
-      );
-    else {
-      dispacher.register(key, listener);
-    }
-  }
-
-  removeListener(
-    collection: string,
-    key: string,
-    listener: (params: any) => void
-  ) {
-    const dispatcher: Dispatcher = this.listeners[collection];
-    if (dispatcher) dispatcher.unregister(key, listener);
+  close(): Promise<void> {
+    return this.open.then(
+      (db) =>
+        new Promise((resolve, reject) => {
+          db.onclose = () => resolve();
+          try {
+            db.close();
+          } catch (err) {
+            reject(err);
+          }
+        })
+    );
   }
 }

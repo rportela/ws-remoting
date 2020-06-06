@@ -1,11 +1,12 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-var WsDbEvent;
-(function (WsDbEvent) {
-    WsDbEvent["INSERTED"] = "INSERTED";
-    WsDbEvent["UPDATED"] = "UPDATED";
-    WsDbEvent["DELETED"] = "DELETED";
-    WsDbEvent["QUERY"] = "QUERY";
-    WsDbEvent["SCALAR"] = "SCALAR";
-    WsDbEvent["SCHEMA"] = "SCHEMA";
-})(WsDbEvent = exports.WsDbEvent || (exports.WsDbEvent = {}));
+var WsDbEventType;
+(function (WsDbEventType) {
+    WsDbEventType["ADD"] = "WS_DB_ADD";
+    WsDbEventType["PUT"] = "WS_DB_PUT";
+    WsDbEventType["DELETE"] = "WS_DB_DELETE";
+    WsDbEventType["QUERY"] = "WS_DB_QUERY";
+    WsDbEventType["SCALAR"] = "WS_DB_SCALAR";
+    WsDbEventType["SCHEMA"] = "WS_DB_SCHEMA";
+    WsDbEventType["SYNC"] = "WS_DB_SYNC";
+})(WsDbEventType = exports.WsDbEventType || (exports.WsDbEventType = {}));

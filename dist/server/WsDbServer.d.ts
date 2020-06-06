@@ -1,14 +1,14 @@
-import * as WebSocket from "ws";
 import { Db } from "../common/Db";
-import { WsServer } from "./WsServer";
-export default class WsDbServer extends WsServer {
+import { JsonRpcServer } from "./JsonRpcServer";
+export default class WsDbServer extends JsonRpcServer {
     private databases;
-    constructor(databases: Db[], options: WebSocket.ServerOptions);
-    private onInsert;
-    private onUpdate;
+    constructor(databases: Db[]);
+    private onAdd;
+    private onPut;
     private onDelete;
     private onSchema;
     private onQuery;
     private onScalar;
+    private onSync;
     getDatabase(name: string): Db;
 }

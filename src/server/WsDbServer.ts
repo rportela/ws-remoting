@@ -1,67 +1,84 @@
-import * as WebSocket from "ws";
-import { Db, DbDeleteEvent, DbFilterExpression, DbSaveEvent } from "../common/Db";
-import { WsDbEvent, WsDbQueryParams, WsDbScalarParams } from "../common/WsDb";
-import { WsServer } from "./WsServer";
+import {
+  Db,
+  DbEventType,
+  DbFilterExpression,
+  DbRecordSaveEvent,
+  DbRecordDeleteEvent,
+} from "../common/Db";
+import {
+  WsDbEventType,
+  WsDbQueryParams,
+  WsDbScalarParams,
+  WsDbSyncParams,
+} from "../common/WsDb";
+import { JsonRpcServer, JsonRpcServerSocket } from "./JsonRpcServer";
 
-export default class WsDbServer extends WsServer {
+export default class WsDbServer extends JsonRpcServer {
   private databases: Db[];
 
-  constructor(databases: Db[], options: WebSocket.ServerOptions) {
-    super(options);
+  constructor(databases: Db[]) {
+    super();
     this.databases = databases;
-    this.register(WsDbEvent.INSERTED, this.onInsert);
-    this.register(WsDbEvent.UPDATED, this.onUpdate);
-    this.register(WsDbEvent.DELETED, this.onDelete);
-    this.register(WsDbEvent.SCHEMA, this.onSchema);
-    this.register(WsDbEvent.SCALAR, this.onScalar);
-    this.register(WsDbEvent.QUERY, this.onQuery);
+    super.setHandler(DbEventType.ADD, this.onAdd);
+    super.setHandler(DbEventType.PUT, this.onPut);
+    super.setHandler(DbEventType.DELETE, this.onDelete);
+    super.setHandler(WsDbEventType.SCHEMA, this.onSchema);
+    super.setHandler(WsDbEventType.SCALAR, this.onScalar);
+    super.setHandler(WsDbEventType.QUERY, this.onQuery);
+    super.setHandler(WsDbEventType.SYNC, this.onSync);
   }
 
-  private onInsert = (sender: string, event: DbSaveEvent) => {
+  private onAdd = (client: JsonRpcServerSocket, event: DbRecordSaveEvent) => {
     this.getDatabase(event.db)
-      .insert(event.collection, event.record)
+      .add(event.collection, event.record)
       .then(() => {
-        this.broadcast(WsDbEvent.INSERTED, event, sender);
+        this.broadcast(DbEventType.ADD, event, client.id);
       });
   };
 
-  private onUpdate = (sender: string, event: DbSaveEvent) => {
+  private onPut = (client: JsonRpcServerSocket, event: DbRecordSaveEvent) => {
     this.getDatabase(event.db)
-      .update(event.collection, event.record)
+      .put(event.collection, event.record)
       .then(() => {
-        this.broadcast(WsDbEvent.UPDATED, event, sender);
+        this.broadcast(DbEventType.PUT, event, client.id);
       });
   };
 
-  private onDelete = (sender: string, event: DbDeleteEvent) => {
+  private onDelete = (
+    client: JsonRpcServerSocket,
+    event: DbRecordDeleteEvent
+  ) => {
     this.getDatabase(event.db)
       .delete(event.collection, event.key)
       .then(() => {
-        this.broadcast(WsDbEvent.DELETED, event, sender);
+        this.broadcast(DbEventType.DELETE, event, client.id);
       });
   };
 
-  private onSchema = (sender: string, event: any) =>
-    this.databases.map((d) => d.getSchema());
+  private onSchema = () => this.databases.map((d) => d.getSchema());
 
-  private onQuery = (sender: string, event: WsDbQueryParams) => {
+  private onQuery = (client: JsonRpcServerSocket, event: WsDbQueryParams) => {
     const select = this.getDatabase(event.db).select(event.collection);
     select._where = event.where
       ? new DbFilterExpression(event.where)
       : undefined;
-    select._order = event.order;
+    select._orderBy = event.order;
     select._offset = event.offset;
     select._limit = event.limit;
-    return select.toArray();
+    return select.all();
   };
 
-  private onScalar = (sender: string, event: WsDbScalarParams) => {
+  private onScalar = (client: JsonRpcServerSocket, event: WsDbScalarParams) => {
     const select = this.getDatabase(event.db).select(event.collection);
     select._where = event.where
       ? new DbFilterExpression(event.where)
       : undefined;
-    select._order = event.order;
+    select._orderBy = event.order;
     return select.first();
+  };
+
+  private onSync = (client: JsonRpcServerSocket, event: WsDbSyncParams) => {
+    
   };
 
   getDatabase(name: string): Db {

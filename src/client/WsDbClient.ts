@@ -1,153 +1,110 @@
-import {
-  DbDeleteEvent,
-  DbEvent,
-  DbFilterComparison,
-  DbFilterTerm,
-  DbSaveEvent,
-  DbSchema,
-  DbSchemaCollection,
-} from "../common/Db";
-import { WsDbEvent, WsDbQueryParams } from "../common/WsDb";
-import BrowserDb from "./BrowserDb";
-import { ObservableDb } from "./ObservableDb";
-import { WsClient, WsClientAction } from "./WsClient";
+import { DbEventType, DbRecordDeleteEvent, DbRecordSaveEvent, DbSchema } from "../common/Db";
+import { WsDbEventType, WsDbSyncParams } from "../common/WsDb";
+import JsonRpcClient from "./JsonRpcClient";
+import ObservableDb from "./ObservableDb";
+import { ClientSocketEventType } from "./WebSocketClient";
+const WS_DB_SCHEMA = "WS_DB_SCHEMA";
 
-export default class WsDbClient {
-  private socket: WsClient;
-  private messagedb: BrowserDb;
-  private opening: Promise<ObservableDb[]>;
+export default class WsDbClient extends JsonRpcClient {
+  private schemas: DbSchema[];
+  private dbs: ObservableDb[];
 
-  constructor(url: string) {
-    this.socket = new WsClient(url);
-    this.socket.addListener(WsClientAction.CONNECT, this.onConnect);
-    this.socket.addListener(WsClientAction.ERROR, this.onError);
-    this.socket.addListener(WsDbEvent.DELETED, this.onServerDelete);
-    this.socket.addListener(WsDbEvent.INSERTED, this.onServerInsert);
-    this.socket.addListener(WsDbEvent.UPDATED, this.onServerUpdate);
-    this.opening = this.socket.call(WsDbEvent.SCHEMA, null).then(this.onSchema);
-    this.messagedb = new BrowserDb({
-      name: "messagedb",
-      version: 1,
-      collections: [{ name: "message", keyPath: "id", autoIncrement: true }],
-    });
-  }
-
-  private notifyServer(action: string, params: any): any {
-    this.messagedb
-      .add("message", {
-        action: action,
-        params: params,
-      })
-      .then((key: any) => {
-        this.socket.call(action, params).then((res: any) => {
-          this.messagedb.delete("message", key);
-          return res;
-        });
-      });
-  }
-
-  private onConnect = () => {
-    this.messagedb.all("message").then((message: any[]) =>
-      message.forEach((message) => {
-        this.socket
-          .call(message.action, message.params)
-          .then(() => this.messagedb.delete("message", message.id));
-      })
-    );
-    this.opening.then((dbs) => dbs.forEach(this.fetchDbRecords));
+  private onRecordAdd = (event: DbRecordSaveEvent) => {
+    this.notify(WsDbEventType.ADD, event);
   };
 
-  private fetchDbRecords = (db: ObservableDb): void => {
-    db.getSchema().collections.forEach((col) =>
-      this.fetchCollectionRecords(db, col)
-    );
+  private onRecordPut = (event: DbRecordSaveEvent) => {
+    this.notify(DbEventType.PUT, event);
   };
 
-  private fetchCollectionRecords(
-    db: ObservableDb,
-    collection: DbSchemaCollection
-  ) {
-    db.select(collection.name)
-      .orderBy("updated_at", true)
-      .first()
-      .then((last: any) => {
-        const query: WsDbQueryParams = {
+  private onRecordDelete = (event: DbRecordDeleteEvent) => {
+    this.notify(DbEventType.DELETE, event);
+  };
+
+  private onRemoteRecordAdd = (event: DbRecordSaveEvent) => {
+    const db = this.getDb(event.db);
+    if (db) db.add(event.collection, event.record);
+  };
+
+  private onRemoteRecordPut = (event: DbRecordSaveEvent) => {
+    const db = this.getDb(event.db);
+    if (db) db.put(event.collection, event.record);
+  };
+
+  private onRemoteRecordDelete = (event: DbRecordDeleteEvent) => {
+    const db = this.getDb(event.db);
+    if (db) db.delete(event.collection, event.key);
+  };
+
+  private createLocalDb = (schema: DbSchema): ObservableDb => {
+    const db = new ObservableDb(schema);
+    db.on(DbEventType.ADD, this.onRecordAdd);
+    db.on(DbEventType.PUT, this.onRecordPut);
+    db.on(DbEventType.DELETE, this.onRecordDelete);
+    return db;
+  };
+
+  private closeLocalDb(db: ObservableDb): Promise<void> {
+    db.off(DbEventType.ADD, this.onRecordAdd);
+    db.off(DbEventType.PUT, this.onRecordPut);
+    db.off(DbEventType.DELETE, this.onRecordDelete);
+    return db.close();
+  }
+
+  private loadLocalDbs() {
+    const localSchemaText = localStorage.getItem(WS_DB_SCHEMA);
+    if (localSchemaText) {
+      this.schemas = JSON.parse(localSchemaText);
+      this.dbs = this.schemas.map(this.createLocalDb);
+      this.onDbAvailable(this);
+    }
+  }
+
+  private callSync = (db: ObservableDb) => {
+    for (const col of db.getSchema().collections) {
+      db.all(col.name).then((all: any[]) => {
+        const lastUpdatedAt =
+          all && all.length > 0
+            ? all.sort((a, b) => b["updated_at"] - a["updated_at"]).pop()
+                .updated_at
+            : undefined;
+        const event: WsDbSyncParams = {
+          collection: col.name,
           db: db.getSchema().name,
-          collection: collection.name,
-          where: last
-            ? new DbFilterTerm(
-                "updated_at",
-                DbFilterComparison.GREATER_THAN,
-                last.updated_at
-              )
-            : undefined,
+          lastUpdatedAt: lastUpdatedAt,
         };
-        this.socket.call(WsDbEvent.QUERY, query).then((results: any[]) => {
-          if (results && results.forEach)
-            results.forEach((result) =>
-              db.upsert(collection.name, result, true)
-            );
-        });
+        this.notify(WsDbEventType.SYNC, event);
       });
+    }
+    return;
+  };
+
+  private refreshLocalDbs = (): Promise<any> => {
+    return this.call(WsDbEventType.SCHEMA)
+      .then((schemas: DbSchema[]) => {
+        localStorage.setItem(WS_DB_SCHEMA, JSON.stringify(schemas));
+        return this.dbs
+          ? Promise.all(this.dbs.map(this.closeLocalDb)).then(() => schemas)
+          : Promise.resolve(schemas);
+      })
+      .then((schemas: DbSchema[]) => {
+        this.dbs = schemas.map(this.createLocalDb);
+        this.dbs.forEach(this.callSync);
+        this.onDbAvailable(this);
+      });
+  };
+
+  constructor(addess: string, protocols?: string | string[]) {
+    super(addess, protocols);
+    this.loadLocalDbs();
+    this.setHandler(DbEventType.ADD, this.onRemoteRecordAdd);
+    this.setHandler(DbEventType.PUT, this.onRemoteRecordPut);
+    this.setHandler(DbEventType.DELETE, this.onRemoteRecordDelete);
+    this.setHandler(ClientSocketEventType.CONNECT, this.refreshLocalDbs);
   }
+  onDbAvailable = (wsdb: WsDbClient) => void {};
 
-  private onError = (err: Error) => {
-    console.error(err);
-  };
-
-  private onServerDelete = (params: DbDeleteEvent) => {
-    this.getDb(params.db).then((db) =>
-      db.delete(params.collection, params.key).catch((err: Error) => {
-        console.error(err);
-        db.notifyListeners(params.collection, DbEvent.DELETED, params.key);
-      })
-    );
-  };
-
-  private onServerInsert = (params: DbSaveEvent) => {
-    this.getDb(params.db).then((db) =>
-      db.insert(params.collection, params.record).catch((err: Error) => {
-        console.error(err);
-        db.notifyListeners(params.collection, DbEvent.INSERTED, params.record);
-      })
-    );
-  };
-
-  private onServerUpdate = (params: DbSaveEvent) => {
-    this.getDb(params.db).then((db) =>
-      db.update(params.collection, params.record).catch((err: Error) => {
-        console.error(err);
-        db.notifyListeners(params.collection, DbEvent.UPDATED, params.record);
-      })
-    );
-  };
-
-  private onClientDelete = (params: DbDeleteEvent) => {
-    this.notifyServer(WsDbEvent.DELETED, params);
-  };
-
-  private onClientInsert = (params: DbSaveEvent) => {
-    this.notifyServer(WsDbEvent.INSERTED, params);
-  };
-
-  private onClientUpdate = (params: DbSaveEvent) => {
-    this.notifyServer(WsDbEvent.UPDATED, params);
-  };
-
-  private onSchema = (schema: DbSchema[]) =>
-    schema.map((s: DbSchema) => {
-      const db: ObservableDb = new ObservableDb(s);
-      s.collections.forEach((col) => {
-        db.addListener(col.name, DbEvent.DELETED, this.onClientDelete);
-        db.addListener(col.name, DbEvent.INSERTED, this.onClientInsert);
-        db.addListener(col.name, DbEvent.UPDATED, this.onClientUpdate);
-      });
-      return db;
-    });
-
-  getDb(name: string): Promise<ObservableDb> {
-    return this.opening.then((dbs: ObservableDb[]) =>
-      dbs.find((db) => db.getSchema().name == name)
-    );
+  getDb(name: string): ObservableDb {
+    return this.dbs ? this.dbs.find((d) => d.getSchema().name === name) : null;
   }
 }

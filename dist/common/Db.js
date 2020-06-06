@@ -1,7 +1,8 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 /**
- *
+ * The standard database filter comparsion.
+ * @author Rodrigo Portela
  */
 var DbFilterComparison;
 (function (DbFilterComparison) {
@@ -17,7 +18,7 @@ var DbFilterComparison;
     DbFilterComparison[DbFilterComparison["NOT_LIKE"] = 9] = "NOT_LIKE";
 })(DbFilterComparison = exports.DbFilterComparison || (exports.DbFilterComparison = {}));
 /**
- *
+ * The filter join operation. Either an AND or an OR.
  */
 var DbFilterOperation;
 (function (DbFilterOperation) {
@@ -25,7 +26,7 @@ var DbFilterOperation;
     DbFilterOperation[DbFilterOperation["OR"] = 1] = "OR";
 })(DbFilterOperation = exports.DbFilterOperation || (exports.DbFilterOperation = {}));
 /**
- *
+ * The type of filter that a filter class should have.
  */
 var DbFilterType;
 (function (DbFilterType) {
@@ -34,7 +35,7 @@ var DbFilterType;
     DbFilterType[DbFilterType["EXPRESSION"] = 2] = "EXPRESSION";
 })(DbFilterType = exports.DbFilterType || (exports.DbFilterType = {}));
 /**
- *
+ * A database filter term.
  */
 class DbFilterTerm {
     constructor(name, comparison, value) {
@@ -74,7 +75,7 @@ class DbFilterTerm {
 }
 exports.DbFilterTerm = DbFilterTerm;
 /**
- *
+ * A database filter expression node.
  */
 class DbFilterNode {
     constructor(filter) {
@@ -98,7 +99,7 @@ class DbFilterNode {
 }
 exports.DbFilterNode = DbFilterNode;
 /**
- * This represents a filter expresison.
+ * A database filter expression.
  */
 class DbFilterExpression {
     constructor(filter) {
@@ -125,6 +126,11 @@ class DbFilterExpression {
     }
 }
 exports.DbFilterExpression = DbFilterExpression;
+/**
+ * Wraps a sequence of order by expressions where you can define
+ * a column name and a direction for the sort.
+ * @author Rodrigo Portela
+ */
 class DbOrderBy {
     constructor(name, descending = false) {
         this.name = name;
@@ -144,59 +150,144 @@ class DbOrderBy {
 }
 exports.DbOrderBy = DbOrderBy;
 /**
- *
+ * Interfaces a database select with configurable where clause,
+ * orderBy clause, offset number and a limit of records.
+ * @author Rodrigo Portela
  */
 class DbSelect {
+    constructor(from) {
+        this._from = from;
+    }
     where(filter) {
-        this._where = new DbFilterExpression(filter);
+        this._where = filter;
         return this;
     }
-    and(filter) {
+    orWhere(filter) {
         if (this._where) {
-            this._where.and(filter);
+            if (this._where.filterType() === DbFilterType.EXPRESSION) {
+                const exp = this._where;
+                exp.or(filter);
+            }
+            else {
+                const exp = new DbFilterExpression(filter);
+                this._where = exp.or(filter);
+            }
         }
         else {
-            this._where = new DbFilterExpression(filter);
+            this._where = filter;
         }
         return this;
     }
-    or(filter) {
+    andWhere(filter) {
         if (this._where) {
-            this._where.or(filter);
+            if (this._where.filterType() === DbFilterType.EXPRESSION) {
+                const exp = this._where;
+                exp.and(filter);
+            }
+            else {
+                const exp = new DbFilterExpression(filter);
+                this._where = exp.and(filter);
+            }
         }
         else {
-            this._where = new DbFilterExpression(filter);
+            this._where = filter;
         }
         return this;
     }
-    offset(offset) {
-        this._offset = offset;
+    orderBy(name, descending) {
+        this._orderBy = new DbOrderBy(name, descending);
         return this;
     }
-    limit(limit) {
-        this._limit = limit;
+    thenOrderBy(name, descending) {
+        if (this._orderBy) {
+            let ob = this._orderBy;
+            while (ob.next)
+                ob = ob.next;
+            ob.next = new DbOrderBy(name, descending);
+        }
+        else {
+            this._orderBy = new DbOrderBy(name, descending);
+        }
         return this;
     }
-    orderBy(name, descending = false) {
-        this._order = new DbOrderBy(name, descending);
+    offset(count) {
+        this._offset = count;
         return this;
     }
-    thenOrderBy(name, descending = false) {
-        this._order.next = new DbOrderBy(name, descending);
+    limit(count) {
+        this._limit = count;
+        return this;
+    }
+    page(page, pageSize) {
+        this._offset = pageSize * page;
+        this._limit = pageSize;
         return this;
     }
 }
 exports.DbSelect = DbSelect;
-var DbEvent;
-(function (DbEvent) {
-    DbEvent["INSERTED"] = "INSERTED";
-    DbEvent["UPDATED"] = "UPDATED";
-    DbEvent["DELETED"] = "DELETED";
-    DbEvent["UPGRADED"] = "UPGRADED";
-})(DbEvent = exports.DbEvent || (exports.DbEvent = {}));
-class DbSaveEvent {
+class NaiveDbSelect extends DbSelect {
+    constructor(db, collection) {
+        super(collection);
+        this.db = db;
+    }
+    count() {
+        return this.db.all(this._from).then((records) => {
+            if (!this._where)
+                return records.length;
+            else {
+                let counter = 0;
+                for (const r of records)
+                    if (this._where.filterRecord(r))
+                        counter++;
+                return counter;
+            }
+        });
+    }
+    first() {
+        return this.db.all(this._from).then((records) => {
+            if (this._where)
+                records = records.filter(this._where.filterRecord);
+            if (this._orderBy)
+                this._orderBy.sort(records);
+            return records.length > 0 ? records[0] : null;
+        });
+    }
+    all() {
+        return this.db.all(this._from).then((records) => {
+            if (this._where)
+                records = records.filter(this._where.filterRecord);
+            if (this._orderBy)
+                this._orderBy.sort(records);
+            if (this._offset) {
+                return records.slice(this._offset, this._limit || records.length);
+            }
+            else if (this._limit) {
+                return records.slice(0, this._limit);
+            }
+            else {
+                return records;
+            }
+        });
+    }
 }
-exports.DbSaveEvent = DbSaveEvent;
-class DbDeleteEvent {
+exports.NaiveDbSelect = NaiveDbSelect;
+var DbEventType;
+(function (DbEventType) {
+    DbEventType["ADD"] = "DB_RECORD_ADD";
+    DbEventType["PUT"] = "DB_RECORD_PUT";
+    DbEventType["DELETE"] = "DB_RECORD_DELETE";
+    DbEventType["DROP_COLLECTION"] = "DB_COLLECTION_DROP";
+    DbEventType["DROP_DATABASE"] = "DB_DATABASE_DROP";
+    DbEventType["UPGRADED"] = "DB_UPGRADED";
+    DbEventType["OPEN"] = "DB_OPEN";
+    DbEventType["CLOSED"] = "DB_CLOSED";
+    DbEventType["ERROR"] = "ERROR";
+})(DbEventType = exports.DbEventType || (exports.DbEventType = {}));
+function isDbRecordSaveEvent(event) {
+    return event && event.record !== undefined;
 }
-exports.DbDeleteEvent = DbDeleteEvent;
+exports.isDbRecordSaveEvent = isDbRecordSaveEvent;
+function isDbRecordDeleteEvent(event) {
+    return event && event.key !== undefined;
+}
+exports.isDbRecordDeleteEvent = isDbRecordDeleteEvent;

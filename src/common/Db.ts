@@ -1,5 +1,82 @@
 /**
- *
+ * Currently available database key types.
+ *  * @author Rodrigo Portela.
+ */
+export type DbKey = string | number;
+/**
+ * This interface wraps options for creating an index on the database.
+ * @author Rodrigo Portela
+ */
+export interface DbSchemaIndex {
+  /**
+   * The name of the index.
+   */
+  name: string;
+  /**
+   * The key path of the index to be created.
+   */
+  keyPath: string | string[];
+  /**
+   * An indicator that the index is unique.
+   */
+  unique?: boolean;
+}
+
+/**
+ * This interface wraps options for creating a collection on the database.
+ * @author Rodrigo Portela
+ */
+export interface DbSchemaCollection {
+  /**
+   * The name of the collection or object store.
+   */
+  name: string;
+  /**
+   * The key path to locate objects.
+   */
+  keyPath?: string | string[];
+  /**
+   * An indicator that the key Path should auto Increment itself.
+   */
+  autoIncrement?: boolean;
+  /**
+   * None or more indexes to be created on the object store.
+   */
+  indexes?: DbSchemaIndex[];
+}
+
+/**
+ * This is the definition of the schema of the database.
+ * It can either be declared on json or read from a real database instance.
+ */
+export interface DbSchema {
+  /**
+   * The name of the database.
+   */
+  name: string;
+  /**
+   * The version number of the schema or 1 if none is provided.
+   */
+  version?: number;
+  /**
+   * An array of collections that should be created on the database.
+   */
+  collections: DbSchemaCollection[];
+}
+
+/**
+ * This interface is utilized on cursors.
+ * The Record Processor should visit a record and return true if it wants more records
+ * or false otherwise.
+ * @author Rodrigo Portela
+ */
+export interface DbRecordProcessor {
+  visit(record: any): boolean;
+}
+
+/**
+ * The standard database filter comparsion.
+ * @author Rodrigo Portela
  */
 export enum DbFilterComparison {
   EQUALS_TO,
@@ -15,7 +92,7 @@ export enum DbFilterComparison {
 }
 
 /**
- *
+ * The filter join operation. Either an AND or an OR.
  */
 export enum DbFilterOperation {
   AND,
@@ -23,7 +100,7 @@ export enum DbFilterOperation {
 }
 
 /**
- *
+ * The type of filter that a filter class should have.
  */
 export enum DbFilterType {
   TERM,
@@ -32,7 +109,7 @@ export enum DbFilterType {
 }
 
 /**
- *
+ * An interface for a database query filter.
  */
 export interface DbFilter {
   filterType(): DbFilterType;
@@ -40,7 +117,7 @@ export interface DbFilter {
 }
 
 /**
- *
+ * A database filter term.
  */
 export class DbFilterTerm implements DbFilter {
   name: string;
@@ -84,7 +161,7 @@ export class DbFilterTerm implements DbFilter {
 }
 
 /**
- *
+ * A database filter expression node.
  */
 export class DbFilterNode implements DbFilter {
   filter: DbFilter;
@@ -113,13 +190,12 @@ export class DbFilterNode implements DbFilter {
     return DbFilterType.NODE;
   }
 }
-
 /**
- * This represents a filter expresison.
+ * A database filter expression.
  */
 export class DbFilterExpression implements DbFilter {
-  first: DbFilterNode;
-  last: DbFilterNode;
+  private first: DbFilterNode;
+  private last: DbFilterNode;
   constructor(filter: DbFilter) {
     this.first = new DbFilterNode(filter);
     this.last = this.first;
@@ -147,10 +223,15 @@ export class DbFilterExpression implements DbFilter {
   }
 }
 
+/**
+ * Wraps a sequence of order by expressions where you can define
+ * a column name and a direction for the sort.
+ * @author Rodrigo Portela
+ */
 export class DbOrderBy {
   name: string;
   descending: boolean;
-  next: DbOrderBy;
+  next?: DbOrderBy;
 
   constructor(name: string, descending: boolean = false) {
     this.name = name;
@@ -159,8 +240,8 @@ export class DbOrderBy {
 
   createComparer() {
     return this.descending
-      ? (a, b) => a[this.name] - b[this.name]
-      : (a, b) => b[this.name] - a[this.name];
+      ? (a: any, b: any) => a[this.name] - b[this.name]
+      : (a: any, b: any) => b[this.name] - a[this.name];
   }
   sort(arr: any[]) {
     arr.sort(this.createComparer());
@@ -171,109 +252,188 @@ export class DbOrderBy {
 }
 
 /**
- *
+ * Interfaces a database select with configurable where clause,
+ * orderBy clause, offset number and a limit of records.
+ * @author Rodrigo Portela
  */
 export abstract class DbSelect<T> {
-  _where: DbFilterExpression;
-  _order: DbOrderBy;
+  _from: string;
+  _where: DbFilter;
+  _orderBy: DbOrderBy;
   _offset: number;
   _limit: number;
-
-  where(filter: DbFilter): DbSelect<T> {
-    this._where = new DbFilterExpression(filter);
+  constructor(from: string) {
+    this._from = from;
+  }
+  where(filter: DbFilterTerm | DbFilterExpression): DbSelect<T> {
+    this._where = filter;
     return this;
   }
-
-  and(filter: DbFilter): DbSelect<T> {
+  orWhere(filter: DbFilterTerm | DbFilterExpression): DbSelect<T> {
     if (this._where) {
-      this._where.and(filter);
+      if (this._where.filterType() === DbFilterType.EXPRESSION) {
+        const exp: any = this._where;
+        exp.or(filter);
+      } else {
+        const exp: DbFilterExpression = new DbFilterExpression(filter);
+        this._where = exp.or(filter);
+      }
     } else {
-      this._where = new DbFilterExpression(filter);
+      this._where = filter;
     }
     return this;
   }
-
-  or(filter: DbFilter): DbSelect<T> {
+  andWhere(filter: DbFilterTerm | DbFilterExpression): DbSelect<T> {
     if (this._where) {
-      this._where.or(filter);
+      if (this._where.filterType() === DbFilterType.EXPRESSION) {
+        const exp: any = this._where;
+        exp.and(filter);
+      } else {
+        const exp: DbFilterExpression = new DbFilterExpression(filter);
+        this._where = exp.and(filter);
+      }
     } else {
-      this._where = new DbFilterExpression(filter);
+      this._where = filter;
     }
     return this;
   }
-
-  offset(offset: number): DbSelect<T> {
-    this._offset = offset;
+  orderBy(name: string, descending?: boolean): DbSelect<T> {
+    this._orderBy = new DbOrderBy(name, descending);
     return this;
   }
-
-  limit(limit: number): DbSelect<T> {
-    this._limit = limit;
+  thenOrderBy(name: string, descending?: boolean): DbSelect<T> {
+    if (this._orderBy) {
+      let ob = this._orderBy;
+      while (ob.next) ob = ob.next;
+      ob.next = new DbOrderBy(name, descending);
+    } else {
+      this._orderBy = new DbOrderBy(name, descending);
+    }
     return this;
   }
-
-  orderBy(name: string, descending: boolean = false): DbSelect<T> {
-    this._order = new DbOrderBy(name, descending);
+  offset(count: number): DbSelect<T> {
+    this._offset = count;
     return this;
   }
-
-  thenOrderBy(name: string, descending: boolean = false): DbSelect<T> {
-    this._order.next = new DbOrderBy(name, descending);
+  limit(count: number): DbSelect<T> {
+    this._limit = count;
     return this;
   }
-
+  page(page: number, pageSize: number): DbSelect<T> {
+    this._offset = pageSize * page;
+    this._limit = pageSize;
+    return this;
+  }
+  abstract count(): Promise<number>;
   abstract first(): Promise<T>;
-  abstract toArray(): Promise<T[]>;
-}
-
-export type DbKey = string | number;
-
-export interface DbSchemaIndex {
-  name: string;
-  unique?: boolean;
-}
-
-export interface DbSchemaCollection {
-  name: string;
-  keyPath?: string;
-  autoIncrement?: boolean;
-  indexes?: DbSchemaIndex[];
-}
-
-export interface DbSchema {
-  version: number;
-  name: string;
-  collections: DbSchemaCollection[];
-}
-
-export enum DbEvent {
-  INSERTED = "INSERTED",
-  UPDATED = "UPDATED",
-  DELETED = "DELETED",
-  UPGRADED = "UPGRADED",
-}
-
-export class DbSaveEvent {
-  db: string;
-  collection: string;
-  keyPath: string;
-  key: DbKey;
-  record: any;
-}
-
-export class DbDeleteEvent {
-  db: string;
-  collection: string;
-  keyPath: string;
-  key: DbKey;
+  abstract all(): Promise<T[]>;
 }
 
 export interface Db {
   getSchema(): DbSchema;
-  getCollectionSchema(collection: string): DbSchemaCollection;
+  get(collection: string, key: DbKey): Promise<any>;
+  all(collection: string): Promise<any[]>;
   select<T>(collection: string): DbSelect<T>;
-  insert<T>(collection: string, record: T): Promise<DbSaveEvent>;
-  update<T>(collection: string, record: T): Promise<DbSaveEvent>;
-  upsert<T>(collection: string, record: T): Promise<DbSaveEvent>;
-  delete(collection: string, id: DbKey): Promise<DbDeleteEvent>;
+  add(collection: string, record: any): Promise<DbRecordSaveEvent>;
+  put(collection: string, record: any): Promise<DbRecordSaveEvent>;
+  delete(
+    collection: string,
+    key: string | number
+  ): Promise<DbRecordDeleteEvent>;
+  dropCollection(collection: string): Promise<DbCollectionDropEvent>;
+  drop(): Promise<DbDatabaseDropEvent>;
+}
+
+export class NaiveDbSelect<T> extends DbSelect<T> {
+  db: Db;
+  constructor(db: Db, collection: string) {
+    super(collection);
+    this.db = db;
+  }
+
+  count(): Promise<number> {
+    return this.db.all(this._from).then((records) => {
+      if (!this._where) return records.length;
+      else {
+        let counter = 0;
+        for (const r of records) if (this._where.filterRecord(r)) counter++;
+        return counter;
+      }
+    });
+  }
+  first(): Promise<T> {
+    return this.db.all(this._from).then((records: T[]) => {
+      if (this._where) records = records.filter(this._where.filterRecord);
+      if (this._orderBy) this._orderBy.sort(records);
+      return records.length > 0 ? records[0] : null;
+    });
+  }
+  all(): Promise<T[]> {
+    return this.db.all(this._from).then((records: T[]) => {
+      if (this._where) records = records.filter(this._where.filterRecord);
+      if (this._orderBy) this._orderBy.sort(records);
+      if (this._offset) {
+        return records.slice(this._offset, this._limit || records.length);
+      } else if (this._limit) {
+        return records.slice(0, this._limit);
+      } else {
+        return records;
+      }
+    });
+  }
+}
+
+export enum DbEventType {
+  ADD = "DB_RECORD_ADD",
+  PUT = "DB_RECORD_PUT",
+  DELETE = "DB_RECORD_DELETE",
+  DROP_COLLECTION = "DB_COLLECTION_DROP",
+  DROP_DATABASE = "DB_DATABASE_DROP",
+  UPGRADED = "DB_UPGRADED",
+  OPEN = "DB_OPEN",
+  CLOSED = "DB_CLOSED",
+  ERROR = "ERROR",
+}
+
+export interface DbRecordSaveEvent {
+  db: string;
+  collection: string;
+  record: any;
+  key: DbKey;
+  keyPath?: string | string[];
+}
+
+export interface DbRecordDeleteEvent {
+  db: string;
+  collection: string;
+  key: DbKey;
+  keyPath?: string | string[];
+}
+
+export interface DbCollectionDropEvent {
+  db: string;
+  collection: string;
+}
+
+export interface DbDatabaseDropEvent {
+  db: string;
+}
+
+export type DbEvent =
+  | DbRecordSaveEvent
+  | DbRecordDeleteEvent
+  | DbCollectionDropEvent
+  | DbDatabaseDropEvent
+  | Error;
+
+export function isDbRecordSaveEvent(
+  event: DbEvent
+): event is DbRecordSaveEvent {
+  return event && (event as DbRecordSaveEvent).record !== undefined;
+}
+
+export function isDbRecordDeleteEvent(
+  event: DbEvent
+): event is DbRecordDeleteEvent {
+  return event && (event as DbRecordDeleteEvent).key !== undefined;
 }

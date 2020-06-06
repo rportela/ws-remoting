@@ -1,12 +1,12 @@
 /**
- * This class contains a dictionary of event dispatchers.
- * You can store diferent events and their dispatchers on this instance.
- * And can combine this with other dispatchers to forward events to them;
+ * This is an event emitter.
+ * You can store diferent listeners and emit events on this instance.
+ * And can combine this with other emitters to forward events to them;
  *
  * @author Rodrigo Portela
  */
-export default class Dispatcher {
-  private dispatchers: any = {};
+export default class EventEmitter {
+  private listeners: any = {};
 
   /**
    * This method registers a listener for a specific event on this this dispatcher.
@@ -14,11 +14,11 @@ export default class Dispatcher {
    * @param key
    * @param listener
    */
-  register(key: string, listener: (params: any) => void): boolean {
-    let listeners: any[] = this.dispatchers[key];
+  on(key: string, listener: (params?: any) => void): boolean {
+    let listeners: any[] = this.listeners[key];
     if (!listeners) {
       listeners = [listener];
-      this.dispatchers[key] = listeners;
+      this.listeners[key] = listeners;
       return true;
     } else {
       let index = listeners.indexOf(listener);
@@ -32,13 +32,13 @@ export default class Dispatcher {
   }
 
   /**
-   * This method removes a listener from our listener bag of arrays.
+   * This method removes a listener from our listener bag.
    *
    * @param key
    * @param dispacher
    */
-  unregister(key: string, listener: (params: any) => void): boolean {
-    let listeners: any[] = this.dispatchers[key];
+  off(key: string, listener: (params?: any) => void): boolean {
+    let listeners: any[] = this.listeners[key];
     if (!listeners) return false;
     let index = listeners.indexOf(listener);
     if (index < 0) return false;
@@ -48,20 +48,23 @@ export default class Dispatcher {
 
   /**
    * This method dispatches an event to all listeners of that specific key;
+   * And returns the numer of listeners that were connected to it.
    * @param key
    * @param params
    */
-  dispatch(key: string, params: any): boolean {
-    let dispachers: any[] = this.dispatchers[key];
-    if (!dispachers) return false;
-    for (const d of dispachers) {
+  emit(key: string, params?: any): number {
+    let dispachers: any[] = this.listeners[key];
+    if (!dispachers) return 0;
+    let counter = 0;
+    dispachers.forEach((d) => {
       try {
         d(params);
+        counter++;
       } catch (e) {
         console.error(e);
         console.trace(e);
       }
-    }
-    return true;
+    });
+    return counter;
   }
 }

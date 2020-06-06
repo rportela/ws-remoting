@@ -32,7 +32,7 @@ class WsClient {
         this.is_connecting = false;
         this.is_connected = false;
         this.buffer = {};
-        this.reconnectInterval = 5000;
+        this.reconnectInterval = 30000;
         this.listeners = new Dispatcher_1.default();
         /**
          * This method handles the connection and flushes any remoting messages present on the buffer.
