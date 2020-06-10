@@ -1,7 +1,7 @@
 /// <reference types="node" />
 import * as http from "http";
 import * as WebSocket from "ws";
-import { JsonRpcRequest, JsonRpcResponse, JsonRpc } from "../common/JsonRpc2";
+import { JsonRpc, JsonRpcRequest, JsonRpcResponse } from "../common/JsonRpc2";
 /**
  *
  */
@@ -17,7 +17,7 @@ export declare class JsonRpcServerSocket {
     server: JsonRpcServer;
     socket: WebSocket;
     id: string;
-    info: http.IncomingMessage;
+    info: http.IncomingHttpHeaders;
     constructor(server: JsonRpcServer, socket: WebSocket, message: http.IncomingMessage);
     private onMessage;
     private onClose;
@@ -29,13 +29,13 @@ export declare class JsonRpcServerSocket {
 export declare class JsonRpcServer {
     server: http.Server;
     socket: WebSocket.Server;
-    rpc: JsonRpc<JsonRpcServerHandler>;
+    rpc: JsonRpc;
     clients: JsonRpcServerSocket[];
-    run(method: string, client: JsonRpcServerSocket, params?: any): any;
+    constructor();
     private registerClient;
     unregisterClient(client: JsonRpcServerSocket): void;
     private onHttpRequest;
-    constructor();
+    run(method: string, client: JsonRpcServerSocket, params?: any): any;
     receiveSocketResponse(client: JsonRpcServerSocket, response: JsonRpcResponse): void;
     receiveSocketRequest(client: JsonRpcServerSocket, request: JsonRpcRequest): void;
     receiveSocketNotification(client: JsonRpcServerSocket, request: JsonRpcRequest): void;

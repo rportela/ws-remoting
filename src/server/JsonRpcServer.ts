@@ -1,13 +1,11 @@
 import * as http from "http";
 import * as WebSocket from "ws";
 import {
+  isRpcRequest,
+  JsonRpc,
   JsonRpcRequest,
   JsonRpcResponse,
-  isRpcRequest,
   SocketData,
-  JsonRpcError,
-  JsonRpcPendingRequest,
-  JsonRpc,
 } from "../common/JsonRpc2";
 
 /**
@@ -30,14 +28,14 @@ export class JsonRpcServerSocket {
   server: JsonRpcServer;
   socket: WebSocket;
   id: string;
-  info: http.IncomingMessage;
+  info: http.IncomingHttpHeaders;
 
   constructor(
     server: JsonRpcServer,
     socket: WebSocket,
     message: http.IncomingMessage
   ) {
-    this.info = message;
+    this.info = message.headers;
     this.id = message.headers["sec-websocket-key"].toString();
     this.server = server;
     this.socket = socket;
@@ -48,8 +46,10 @@ export class JsonRpcServerSocket {
   private onMessage = (data: SocketData): void => {
     const msg: JsonRpcRequest | JsonRpcResponse = JSON.parse(data.toString());
     if (isRpcRequest(msg)) {
+      console.log("received a message request", this.id, msg);
       this.server.receiveSocketRequest(this, msg);
     } else {
+      console.log("received a response message", this.id, msg);
       this.server.receiveSocketResponse(this, msg);
     }
   };
@@ -69,6 +69,7 @@ export class JsonRpcServerSocket {
       error: err,
       result: result,
     };
+    console.log("responding request", resp);
     const json = JSON.stringify(resp);
     this.socket.send(json);
   }
@@ -92,17 +93,20 @@ export class JsonRpcServerSocket {
 export class JsonRpcServer {
   server: http.Server;
   socket: WebSocket.Server;
-  rpc: JsonRpc<JsonRpcServerHandler>;
+  rpc: JsonRpc;
   clients: JsonRpcServerSocket[] = [];
 
-  run(method: string, client: JsonRpcServerSocket, params?: any): any {
-    const handler = this.rpc.getHandler(method);
-    return handler ? handler(client, params) : undefined;
+  constructor() {
+    this.rpc = new JsonRpc();
+    this.server = http.createServer(this.onHttpRequest);
+    this.socket = new WebSocket.Server({ server: this.server });
+    this.socket.on("connection", this.registerClient);
   }
 
   private registerClient = (ws: WebSocket, message: http.IncomingMessage) => {
     const client = new JsonRpcServerSocket(this, ws, message);
     this.clients.push(client);
+    console.log("got a new client", client.info);
     this.run(JsonRpcEventType.CLIENT_CONNECT, client, client.info);
   };
 
@@ -110,6 +114,7 @@ export class JsonRpcServer {
     const idx = this.clients.indexOf(client);
     if (idx >= 0) {
       this.clients.splice(idx, 1);
+      console.log("lost a client", client.info);
       this.run(JsonRpcEventType.CLIENT_DISCONNECT, client, client.info);
     }
   }
@@ -122,11 +127,9 @@ export class JsonRpcServer {
     res.end();
   };
 
-  constructor() {
-    this.rpc = new JsonRpc<JsonRpcServerHandler>();
-    this.server = http.createServer(this.onHttpRequest);
-    this.socket = new WebSocket.Server({ server: this.server });
-    this.socket.on("connection", this.registerClient);
+  run(method: string, client: JsonRpcServerSocket, params?: any): any {
+    const handler = this.rpc.getHandler(method);
+    return handler ? handler(client, params) : undefined;
   }
 
   receiveSocketResponse(
@@ -137,8 +140,7 @@ export class JsonRpcServer {
   }
 
   receiveSocketRequest(client: JsonRpcServerSocket, request: JsonRpcRequest) {
-    if (request.id) this.receiveSocketNotification(client, request);
-    else {
+    if (request.id) {
       const handler = this.rpc.getHandler(request.method);
       if (handler) {
         try {
@@ -156,6 +158,8 @@ export class JsonRpcServer {
           undefined
         );
       }
+    } else {
+      this.receiveSocketNotification(client, request);
     }
   }
 
@@ -163,6 +167,7 @@ export class JsonRpcServer {
     client: JsonRpcServerSocket,
     request: JsonRpcRequest
   ) {
+    console.log("received a notification", request);
     const handler = this.rpc.getHandler(request.method);
     if (handler) handler(client, request.params);
   }

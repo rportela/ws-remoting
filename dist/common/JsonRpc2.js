@@ -1,5 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+const Handlers_1 = require("./Handlers");
 /**
  * Tests a message to tell if it's a request or alternatively a response.
  *
@@ -44,35 +45,27 @@ exports.createRpcId = createRpcId;
 /**
  *
  */
-class JsonRpc {
+class JsonRpc extends Handlers_1.default {
     constructor() {
-        this.handlers = {};
+        super(...arguments);
         this.pending = {};
         /**
          * Tries to find a generic handler to errors.
          * If none is found, console.error is used to display an error.
          */
         this.raiseError = (err) => {
-            let errHandler = this.handlers["error"];
+            let errHandler = this.getHandler["error"];
             if (!errHandler)
-                errHandler = this.handlers["Error"];
+                errHandler = this.getHandler["Error"];
             if (!errHandler)
-                errHandler = this.handlers["ERROR"];
+                errHandler = this.getHandler["ERROR"];
             if (!errHandler)
                 errHandler = console.error;
             errHandler(err);
         };
     }
-    setHandler(method, handler) {
-        this.handlers[method] = handler;
-    }
-    removeHandler(method) {
-        delete this.handlers[method];
-    }
-    getHandler(method) {
-        return this.handlers[method];
-    }
     call(pipe, method, params) {
+        //console.log("sending request on pipe", pipe, method, params);
         return new Promise((resolve, reject) => {
             const pending = new JsonRpcPendingRequest(resolve, reject, createRpcId(), method, params);
             this.pending[pending.id] = pending;
@@ -82,6 +75,7 @@ class JsonRpc {
     }
     resolve(response) {
         const req = this.pending[response.id];
+        //console.log("received a remote response", response, req);
         if (req) {
             delete this.pending[response.id];
             if (response.error)
@@ -94,6 +88,7 @@ class JsonRpc {
         }
     }
     notify(pipe, method, params) {
+        console.log("Notifying pipe", pipe, method, params);
         const req = {
             id: null,
             jsonrpc: "2.0",

@@ -74,5 +74,14 @@ class EventEmitter {
         });
         return counter;
     }
+    /**
+     * Clears all listeners from this emitter instance.
+     *
+     */
+    clear() {
+        for (const key of Object.keys(this.listeners)) {
+            delete this.listeners[key];
+        }
+    }
 }
 exports.default = EventEmitter;

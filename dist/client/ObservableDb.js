@@ -1,268 +1,159 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-const Db_1 = require("../common/Db");
 const EventEmitter_1 = require("../common/EventEmitter");
-/**
- * Wraps indexed db functionality with promises for a better developer experience.
- * And it has an event emmiter attached to it so every operation can be observed from
- * the UI or any other listener.
- *
- * @author Rodrigo Portela
- */
+const BrowserDb_1 = require("./BrowserDb");
+const DbEvents_1 = require("../common/DbEvents");
 class ObservableDb {
-    /**
-     * Construcs an IDB with a promise that it will either open or a rejection will happen.
-     *
-     * @param schema
-     */
     constructor(schema) {
-        /**
-         * Destroys every previos object store and creates new ones based on schema.
-         * IMPORTANT: all data is deleted from the database.
-         */
-        this.onUpgradeNeeded = (event) => {
-            const target = event.target;
-            const db = target.result;
-            for (const name of db.objectStoreNames)
-                db.deleteObjectStore(name);
-            this.schema.collections.forEach((col) => {
-                const store = db.createObjectStore(col.name, {
-                    keyPath: col.keyPath,
-                    autoIncrement: col.autoIncrement,
-                });
-                if (col.indexes) {
-                    for (const idx of col.indexes) {
-                        store.createIndex(idx.name, idx.keyPath, { unique: idx.unique });
-                    }
-                }
-            });
-            this.emitter.emit(Db_1.DbEventType.UPGRADED, this);
-        };
-        this.schema = schema;
         this.emitter = new EventEmitter_1.default();
-        this.open = new Promise((resolve, reject) => {
-            const req = indexedDB.open(schema.name, schema.version);
-            req.onerror = () => {
-                reject(req.error);
-                this.emitter.emit(Db_1.DbEventType.ERROR, req.error);
-            };
-            req.onsuccess = () => {
-                resolve(req.result);
-                this.emitter.emit(Db_1.DbEventType.OPEN, this);
-            };
-            req.onupgradeneeded = this.onUpgradeNeeded;
-            req.onblocked = () => {
-                const err = new Error("The database is blocked. You should probably refresh your browser.");
-                reject(err);
-                this.emitter.emit(Db_1.DbEventType.ERROR, err);
-            };
-        });
+        this.db = new BrowserDb_1.default(schema);
     }
     /**
-     * Creates time incremental unique ids.
+     * Gets the current IDBDatabase promise for avanced programming.
      */
-    static createId() {
-        return new Date().getTime().toString(36) + "_" + Math.random().toString(36);
+    getDb() {
+        return this.db.getDb();
     }
     /**
-     * Attaches a listener to a specific event.
-     * @param event
-     * @param listener
-     */
-    on(event, listener) {
-        this.emitter.on(event, listener);
-    }
-    /**
-     * Detaches a listener from a specific event.
-     * @param event
-     * @param listener
-     */
-    off(event, listener) {
-        this.emitter.off(event, listener);
-    }
-    /**
-     * Drops a collection and emits the corresponding event.
-     *
-     * @param collection
-     */
-    dropCollection(collection) {
-        return this.open.then((db) => {
-            db.deleteObjectStore(collection);
-            const event = {
-                db: this.schema.name,
-                collection: collection,
-            };
-            this.emitter.emit(Db_1.DbEventType.DROP_COLLECTION, event);
-            return event;
-        });
-    }
-    /**
-     * Closes, drops the entire database and emmits the corresponding event.
-     */
-    drop() {
-        return this.open.then((db) => new Promise((resolve, reject) => {
-            try {
-                db.onclose = () => {
-                    const event = {
-                        db: this.schema.name,
-                    };
-                    indexedDB.deleteDatabase(this.schema.name);
-                    resolve(event);
-                    this.emitter.emit(Db_1.DbEventType.DROP_DATABASE, event);
-                };
-                db.close();
-            }
-            catch (err) {
-                reject(err);
-            }
-        }));
-    }
-    /**
-     * Gets the current schema of the database.
+     * The schema of this database.
      */
     getSchema() {
-        return this.schema;
+        return this.db.getSchema();
     }
     /**
-     * Gets a specific member of a collection by it's key.
+     * The add method is an insert only method.
+     * If a record already exists in the object store with the key parameter as its key,
+     * then an error ConstrainError event is fired on the returned request object.
+     * For updating existing records, you should use the IDBObjectStore.put method instead.
      *
      * @param collection
+     * @param record
      * @param key
      */
-    get(collection, key) {
-        return this.open.then((db) => new Promise((resolve, reject) => {
-            const req = db
-                .transaction(collection)
-                .objectStore(collection)
-                .get(key);
-            req.onsuccess = () => resolve(req.result);
-            req.onerror = () => reject(req.error);
-        }));
-    }
-    /**
-     * Gets all members of a collection.
-     *
-     * @param collection
-     */
-    all(collection) {
-        return this.open.then((db) => new Promise((resolve, reject) => {
-            const req = db
-                .transaction(collection)
-                .objectStore(collection)
-                .getAll();
-            req.onsuccess = () => resolve(req.result);
-            req.onerror = () => reject(req.error);
-        }));
-    }
-    /**
-     * Creates a select object for a specific collection.
-     *
-     * @param collection
-     */
-    select(collection) {
-        return new Db_1.NaiveDbSelect(this, collection);
-    }
-    /**
-     * Adds or updates a record in store with the given value and key.
-     * If the store uses in-line keys and key is specified a "DataError" DOMException will be thrown.
-     * If put() is used, any existing record with the key will be replaced.
-     * If add() is used, and if a record with the key already exists the request will fail, with request's error set to a "ConstraintError" DOMException.
-     * If successful, request's result will be the record's key.
-     * The corresponding event will be emited.
-     *
-     * @param collection
-     * @param record
-     */
     add(collection, record) {
-        return this.open.then((db) => new Promise((resolve, reject) => {
-            const store = db
-                .transaction(collection, "readwrite")
-                .objectStore(collection);
-            const req = store.add(record);
-            req.onsuccess = () => {
-                const key = req.result;
-                const event = {
-                    db: this.schema.name,
-                    collection: collection,
-                    key: key,
-                    keyPath: store.keyPath,
-                    record: record,
-                };
-                resolve(event);
-                this.emitter.emit(Db_1.DbEventType.ADD, event);
-            };
-            req.onerror = () => reject(req.error);
-        }));
+        return this.db
+            .add(collection, record)
+            .then((event) => this.emitter.emit(DbEvents_1.DbEventType.ADD, event));
     }
     /**
-     * Adds or updates a record in store with the given value and key.
-     * If the store uses in-line keys and key is specified a "DataError" DOMException will be thrown.
-     * If put() is used, any existing record with the key will be replaced.
-     * If add() is used, and if a record with the key already exists the request will fail, with request's error set to a "ConstraintError" DOMException.
-     * If successful, request's result will be the record's key.
-     * The corresponding event will be emited.
+     * The put method is an update or insert method.
+     * See the IDBObjectStore.add method for an insert only method.
+     * Any of the following conditions apply and will raise errors:
+     * The object store uses in-line keys or has a key generator, and a key parameter was provided.
+     * The object store uses out-of-line keys and has no key generator, and no key parameter was provided.
+     * The object store uses in-line keys but no key generator, and the object store's key path does not yield a valid key.
+     * The key parameter was provided but does not contain a valid key.
      *
      * @param collection
      * @param record
+     * @param key
      */
     put(collection, record) {
-        return this.open.then((db) => new Promise((resolve, reject) => {
-            const store = db
-                .transaction(collection, "readwrite")
-                .objectStore(collection);
-            const req = store.put(record);
-            req.onsuccess = () => {
-                const key = req.result;
-                const event = {
-                    db: this.schema.name,
-                    collection: collection,
-                    key: key,
-                    keyPath: store.keyPath,
-                    record: record,
-                };
-                resolve(event);
-                this.emitter.emit(Db_1.DbEventType.PUT, event);
-            };
-            req.onerror = () => reject(req.error);
-        }));
+        return this.db
+            .put(collection, record)
+            .then((event) => this.emitter.emit(DbEvents_1.DbEventType.PUT, event));
     }
     /**
-     * Deletes records in store with the given key or in the given key range in query.
-     * If successful, request's result will be undefined.
-     * And the corresponding event will be emited.
+     * The delete() method of the IDBObjectStore interface returns an IDBRequest object,
+     * and, in a separate thread, deletes the specified record or records.
+     * Either a key or an IDBKeyRange can be passed,
+     * allowing one or multiple records to be deleted from a store.
+     * To delete all records in a store, use  IDBObjectStore.clear.
      *
      * @param collection
      * @param key
      */
     delete(collection, key) {
-        return this.open.then((db) => new Promise((resolve, reject) => {
-            const store = db
-                .transaction(collection, "readwrite")
-                .objectStore(collection);
-            const req = store.delete(key);
-            req.onsuccess = () => {
-                const event = {
-                    db: this.schema.name,
-                    collection: collection,
-                    keyPath: store.keyPath,
-                    key: key,
-                };
-                resolve(event);
-                this.emitter.emit(Db_1.DbEventType.DELETE, event);
-            };
-            req.onerror = () => reject(req.error);
-        }));
+        return this.db
+            .delete(collection, key)
+            .then((event) => this.emitter.emit(DbEvents_1.DbEventType.DELETE, event));
     }
-    close() {
-        return this.open.then((db) => new Promise((resolve, reject) => {
-            db.onclose = () => resolve();
-            try {
-                db.close();
-            }
-            catch (err) {
-                reject(err);
-            }
-        }));
+    /**
+     * The clear() method of the IDBObjectStore interface creates and immediately returns an IDBRequest object,
+     * and clears this object store in a separate thread.
+     * This is for deleting all the current data out of an object store.
+     * Clearing an object store consists of removing all records from the object store and removing all records in indexes
+     * that reference the object store. To remove only some of the records in a store,
+     * use IDBObjectStore.delete passing a key or IDBKeyRange.
+     *
+     * @param collection
+     */
+    clear(collection) {
+        return this.db
+            .clear(collection)
+            .then((event) => this.emitter.emit(DbEvents_1.DbEventType.CLEAR, event));
+    }
+    /**
+     * The count() method of the IDBObjectStore interface returns an IDBRequest object, and, in a separate thread,
+     * returns the total number of records that match the provided key or IDBKeyRange.
+     * If no arguments are provided, it returns the total number of records in the store.
+     *
+     * @param collection
+     * @param key
+     */
+    count(collection, key) {
+        return this.db.count(collection, key);
+    }
+    /**
+     * Retrieves the value of the first record matching the given key or key range in query.
+     * If successful, request's result will be the value, or undefined if there was no matching record.
+     *
+     * @param collection
+     * @param query
+     */
+    get(collection, query) {
+        return this.db.get(collection, query);
+    }
+    /**
+     * Retrieves the values of the records matching the given key or key range in query (up to count if given).
+     * If successful, request's result will be an Array of the values.
+     *
+     * @param collection
+     * @param query
+     * @param count
+     */
+    getAll(collection, query, count) {
+        return this.db.getAll(collection, query, count);
+    }
+    /**
+     * Retrieves the keys of records matching the given key or key range in query (up to count if given).
+     * If successful, request's result will be an Array of the keys.
+     * @param collection
+     * @param query
+     * @param count
+     */
+    getAllKeys(collection, query, count) {
+        return this.db.getAllKeys(collection, query);
+    }
+    /**
+     * Opens a cursor over the records matching query, ordered by direction. If query is null, all records in store are matched.
+     * If successful, request's result will be an IDBCursorWithValue pointing at the first matching record, or null if there were no matching records.
+     *
+     * @param collection
+     */
+    forEach(collection, fn, query, direction) {
+        return this.db.forEach(collection, fn, query, direction);
+    }
+    /**
+     * Retrieves record keys for all objects in the object store matching the specified parameter
+     * or all objects in the store if no parameters are given.
+     *
+     * @param collection
+     * @param fn
+     * @param query
+     * @param direction
+     */
+    forEachKey(collection, fn, query, direction) {
+        return this.db.forEachKey(collection, fn, query, direction);
+    }
+    on(event, listener) {
+        this.emitter.on(event, listener);
+    }
+    off(event, listener) {
+        this.emitter.off(event, listener);
+    }
+    select(collection) {
+        return this.db.select(collection);
     }
 }
 exports.default = ObservableDb;

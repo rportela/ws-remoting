@@ -1,107 +1,116 @@
-import { Db, DbCollectionDropEvent, DbDatabaseDropEvent, DbEventType, DbKey, DbRecordDeleteEvent, DbRecordSaveEvent, DbSchema, DbSelect } from "../common/Db";
-/**
- * Wraps indexed db functionality with promises for a better developer experience.
- * And it has an event emmiter attached to it so every operation can be observed from
- * the UI or any other listener.
- *
- * @author Rodrigo Portela
- */
+import { Db, DbSchema } from "../common/Db";
+import { DbSelect } from "../common/DbSelect";
 export default class ObservableDb implements Db {
-    private schema;
-    private open;
     private emitter;
-    /**
-     * Destroys every previos object store and creates new ones based on schema.
-     * IMPORTANT: all data is deleted from the database.
-     */
-    private onUpgradeNeeded;
-    /**
-     * Construcs an IDB with a promise that it will either open or a rejection will happen.
-     *
-     * @param schema
-     */
+    private db;
     constructor(schema: DbSchema);
     /**
-     * Creates time incremental unique ids.
+     * Gets the current IDBDatabase promise for avanced programming.
      */
-    static createId(): string;
+    getDb(): Promise<IDBDatabase>;
     /**
-     * Attaches a listener to a specific event.
-     * @param event
-     * @param listener
-     */
-    on(event: DbEventType, listener: (params: any) => void): void;
-    /**
-     * Detaches a listener from a specific event.
-     * @param event
-     * @param listener
-     */
-    off(event: DbEventType, listener: (params: any) => void): void;
-    /**
-     * Drops a collection and emits the corresponding event.
-     *
-     * @param collection
-     */
-    dropCollection(collection: string): Promise<DbCollectionDropEvent>;
-    /**
-     * Closes, drops the entire database and emmits the corresponding event.
-     */
-    drop(): Promise<DbDatabaseDropEvent>;
-    /**
-     * Gets the current schema of the database.
+     * The schema of this database.
      */
     getSchema(): DbSchema;
     /**
-     * Gets a specific member of a collection by it's key.
+     * The add method is an insert only method.
+     * If a record already exists in the object store with the key parameter as its key,
+     * then an error ConstrainError event is fired on the returned request object.
+     * For updating existing records, you should use the IDBObjectStore.put method instead.
+     *
+     * @param collection
+     * @param record
+     * @param key
+     */
+    add(collection: string, record: any): Promise<any>;
+    /**
+     * The put method is an update or insert method.
+     * See the IDBObjectStore.add method for an insert only method.
+     * Any of the following conditions apply and will raise errors:
+     * The object store uses in-line keys or has a key generator, and a key parameter was provided.
+     * The object store uses out-of-line keys and has no key generator, and no key parameter was provided.
+     * The object store uses in-line keys but no key generator, and the object store's key path does not yield a valid key.
+     * The key parameter was provided but does not contain a valid key.
+     *
+     * @param collection
+     * @param record
+     * @param key
+     */
+    put(collection: string, record: any): Promise<any>;
+    /**
+     * The delete() method of the IDBObjectStore interface returns an IDBRequest object,
+     * and, in a separate thread, deletes the specified record or records.
+     * Either a key or an IDBKeyRange can be passed,
+     * allowing one or multiple records to be deleted from a store.
+     * To delete all records in a store, use  IDBObjectStore.clear.
      *
      * @param collection
      * @param key
      */
-    get(collection: string, key: DbKey): Promise<any>;
+    delete(collection: string, key: string | number | Date | ArrayBufferView | ArrayBuffer | IDBArrayKey | IDBKeyRange): Promise<any>;
     /**
-     * Gets all members of a collection.
+     * The clear() method of the IDBObjectStore interface creates and immediately returns an IDBRequest object,
+     * and clears this object store in a separate thread.
+     * This is for deleting all the current data out of an object store.
+     * Clearing an object store consists of removing all records from the object store and removing all records in indexes
+     * that reference the object store. To remove only some of the records in a store,
+     * use IDBObjectStore.delete passing a key or IDBKeyRange.
      *
      * @param collection
      */
-    all(collection: string): Promise<any[]>;
+    clear(collection: string): Promise<unknown>;
     /**
-     * Creates a select object for a specific collection.
+     * The count() method of the IDBObjectStore interface returns an IDBRequest object, and, in a separate thread,
+     * returns the total number of records that match the provided key or IDBKeyRange.
+     * If no arguments are provided, it returns the total number of records in the store.
+     *
+     * @param collection
+     * @param key
+     */
+    count(collection: string, key?: string | number | Date | ArrayBufferView | ArrayBuffer | IDBArrayKey | IDBKeyRange): Promise<number>;
+    /**
+     * Retrieves the value of the first record matching the given key or key range in query.
+     * If successful, request's result will be the value, or undefined if there was no matching record.
+     *
+     * @param collection
+     * @param query
+     */
+    get(collection: string, query: string | number | Date | ArrayBufferView | ArrayBuffer | IDBArrayKey | IDBKeyRange): Promise<unknown>;
+    /**
+     * Retrieves the values of the records matching the given key or key range in query (up to count if given).
+     * If successful, request's result will be an Array of the values.
+     *
+     * @param collection
+     * @param query
+     * @param count
+     */
+    getAll(collection: string, query?: string | number | Date | ArrayBufferView | ArrayBuffer | IDBArrayKey | IDBKeyRange, count?: number): Promise<any[]>;
+    /**
+     * Retrieves the keys of records matching the given key or key range in query (up to count if given).
+     * If successful, request's result will be an Array of the keys.
+     * @param collection
+     * @param query
+     * @param count
+     */
+    getAllKeys(collection: string, query?: string | number | Date | ArrayBufferView | ArrayBuffer | IDBArrayKey | IDBKeyRange, count?: number): Promise<IDBValidKey>;
+    /**
+     * Opens a cursor over the records matching query, ordered by direction. If query is null, all records in store are matched.
+     * If successful, request's result will be an IDBCursorWithValue pointing at the first matching record, or null if there were no matching records.
      *
      * @param collection
      */
+    forEach(collection: string, fn: (cursor: IDBCursorWithValue) => void, query?: string | number | Date | ArrayBufferView | ArrayBuffer | IDBArrayKey | IDBKeyRange, direction?: IDBCursorDirection): Promise<void>;
+    /**
+     * Retrieves record keys for all objects in the object store matching the specified parameter
+     * or all objects in the store if no parameters are given.
+     *
+     * @param collection
+     * @param fn
+     * @param query
+     * @param direction
+     */
+    forEachKey(collection: string, fn: (cursor: IDBCursor) => void, query?: string | number | Date | ArrayBufferView | ArrayBuffer | IDBArrayKey | IDBKeyRange, direction?: IDBCursorDirection): Promise<void>;
+    on(event: string, listener: (params: any) => void): void;
+    off(event: string, listener: (params: any) => void): void;
     select<T>(collection: string): DbSelect<T>;
-    /**
-     * Adds or updates a record in store with the given value and key.
-     * If the store uses in-line keys and key is specified a "DataError" DOMException will be thrown.
-     * If put() is used, any existing record with the key will be replaced.
-     * If add() is used, and if a record with the key already exists the request will fail, with request's error set to a "ConstraintError" DOMException.
-     * If successful, request's result will be the record's key.
-     * The corresponding event will be emited.
-     *
-     * @param collection
-     * @param record
-     */
-    add(collection: string, record: any): Promise<DbRecordSaveEvent>;
-    /**
-     * Adds or updates a record in store with the given value and key.
-     * If the store uses in-line keys and key is specified a "DataError" DOMException will be thrown.
-     * If put() is used, any existing record with the key will be replaced.
-     * If add() is used, and if a record with the key already exists the request will fail, with request's error set to a "ConstraintError" DOMException.
-     * If successful, request's result will be the record's key.
-     * The corresponding event will be emited.
-     *
-     * @param collection
-     * @param record
-     */
-    put(collection: string, record: any): Promise<DbRecordSaveEvent>;
-    /**
-     * Deletes records in store with the given key or in the given key range in query.
-     * If successful, request's result will be undefined.
-     * And the corresponding event will be emited.
-     *
-     * @param collection
-     * @param key
-     */
-    delete(collection: string, key: DbKey): Promise<DbRecordDeleteEvent>;
-    close(): Promise<void>;
 }

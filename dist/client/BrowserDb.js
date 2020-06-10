@@ -1,174 +1,192 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+const Db_1 = require("../common/Db");
+const BrowserDbSelect_1 = require("./BrowserDbSelect");
 /**
- * Wraps an indexed db with promises to increase control and
- * developer productivity. This is dependent on the schema being
- * previously defined.
+ * IndexedDB is a low-level API for client-side storage of significant amounts of structured data, including files/blobs.
+ * This API uses indexes to enable high-performance searches of this data.
  *
  * @author Rodrigo Portela
  */
 class BrowserDb {
-    /**
-     * Attempts to open a connection to the named database with the current version,
-     * or 1 if it does not already exist.
-     * If the request is successful request's result will be the connection.
-     *
-     * @param schema
-     */
     constructor(schema) {
         /**
-         * Performs a database upbrade based on a defined schema.
-         * Old object stores are all deleted if not present on the schema.
-         * Collections and their indexes defined on the schema are created.
+         * The onupgradeneeded property of the IDBOpenDBRequest interface is the event handler for the upgradeneeded event,
+         * triggered when a database of a bigger version number than the existing stored database is loaded.
          */
-        this._upgrade = (event) => {
+        this.onUpgradeNeeded = (event) => {
             const target = event.target;
             const db = target.result;
             for (const name of db.objectStoreNames)
                 db.deleteObjectStore(name);
-            this.schema.collections.forEach((col) => {
-                const store = db.createObjectStore(col.name, {
-                    keyPath: col.keyPath,
-                    autoIncrement: col.autoIncrement,
-                });
-                if (col.indexes) {
-                    for (const idx of col.indexes)
-                        store.createIndex(idx.name, idx.name, { unique: idx.unique });
-                }
-            });
+            for (const col of this.schema.collections)
+                this.createCollection(db, col);
         };
         this.schema = schema;
         this.open = new Promise((resolve, reject) => {
             const req = indexedDB.open(schema.name, schema.version);
-            req.onerror = () => reject(req.error);
             req.onsuccess = () => resolve(req.result);
-            req.onupgradeneeded = this._upgrade;
-            req.onblocked = () => reject(new Error("Blocked. Yout should probably refresh your browser."));
+            req.onerror = () => reject(req.error);
+            req.onupgradeneeded = this.onUpgradeNeeded;
+            req.onblocked = () => reject(new Error("This database is blocked, you should probably refresh your browser."));
         });
     }
+    select(collection) {
+        return new BrowserDbSelect_1.default(this, collection);
+    }
     /**
-     * Gets the current database schema.
+     * Creates a new collection based on the schema definition.
+     *
+     * @param db
+     * @param collection
      */
+    createCollection(db, collection) {
+        const store = db.createObjectStore(collection.name, {
+            keyPath: collection.keyPath,
+            autoIncrement: collection.autoIncrement,
+        });
+        if (collection.indexes)
+            for (const index of collection.indexes)
+                store.createIndex(index.name, index.keyPath, {
+                    unique: index.unique,
+                });
+    }
+    /**
+     * Gets the current IDBDatabase promise for avanced programming.
+     */
+    getDb() {
+        return this.open;
+    }
     getSchema() {
         return this.schema;
     }
     /**
-     * Adds or updates a record in store with the given value and key.
-     * If the store uses in-line keys and key is specified a "DataError" DOMException will be thrown.
-     * If put() is used, any existing record with the key will be replaced.
-     * If add() is used, and if a record with the key already exists the request will fail, with request's error set to a "ConstraintError" DOMException.
-     * If successful, request's result will be the record's key.
+     * The add method is an insert only method.
+     * If a record already exists in the object store with the key parameter as its key,
+     * then an error ConstrainError event is fired on the returned request object.
+     * For updating existing records, you should use the IDBObjectStore.put method instead.
      *
      * @param collection
      * @param record
      * @param key
      */
-    add(collection, record, key) {
+    add(collection, record) {
         return this.open.then((db) => new Promise((resolve, reject) => {
-            const req = db
+            const store = db
                 .transaction(collection, "readwrite")
-                .objectStore(collection)
-                .add(record, key);
-            req.onsuccess = () => resolve(req.result);
+                .objectStore(collection);
+            const kp = store.keyPath;
+            record["created_at"] = new Date();
+            if (!store.autoIncrement)
+                record[kp] = Db_1.createId();
+            const req = store.add(record);
             req.onerror = () => reject(req.error);
+            req.onsuccess = () => resolve({
+                collection: store.name,
+                key: req.result,
+                keyPath: kp,
+                record: record,
+                db: this.schema.name,
+            });
         }));
     }
     /**
-     * Adds or updates a record in store with the given value and key.
-     * If the store uses in-line keys and key is specified a "DataError" DOMException will be thrown.
-     * If put() is used, any existing record with the key will be replaced.
-     * If add() is used, and if a record with the key already exists the request will fail, with request's error set to a "ConstraintError" DOMException.
-     * If successful, request's result will be the record's key.
+     * The put method is an update or insert method.
+     * See the IDBObjectStore.add method for an insert only method.
+     * Any of the following conditions apply and will raise errors:
+     * The object store uses in-line keys or has a key generator, and a key parameter was provided.
+     * The object store uses out-of-line keys and has no key generator, and no key parameter was provided.
+     * The object store uses in-line keys but no key generator, and the object store's key path does not yield a valid key.
+     * The key parameter was provided but does not contain a valid key.
      *
      * @param collection
      * @param record
      * @param key
      */
-    put(collection, record, key) {
+    put(collection, record) {
         return this.open.then((db) => new Promise((resolve, reject) => {
-            const req = db
+            const store = db
                 .transaction(collection, "readwrite")
-                .objectStore(collection)
-                .put(record, key);
-            req.onsuccess = () => resolve(req.result);
+                .objectStore(collection);
+            const kp = store.keyPath;
+            record["updated_at"] = new Date();
+            if (!store.autoIncrement && !record[kp])
+                record[kp] = Db_1.createId();
+            const req = store.put(record);
             req.onerror = () => reject(req.error);
+            req.onsuccess = () => resolve({
+                collection: store.name,
+                key: req.result,
+                keyPath: kp,
+                record: record,
+                db: this.schema.name,
+            });
         }));
     }
     /**
-     * Deletes records in store with the given key or in the given key range in query.
-     * If successful, request's result will be undefined.
+     * The delete() method of the IDBObjectStore interface returns an IDBRequest object,
+     * and, in a separate thread, deletes the specified record or records.
+     * Either a key or an IDBKeyRange can be passed,
+     * allowing one or multiple records to be deleted from a store.
+     * To delete all records in a store, use  IDBObjectStore.clear.
      *
      * @param collection
      * @param key
      */
     delete(collection, key) {
         return this.open.then((db) => new Promise((resolve, reject) => {
+            const store = db
+                .transaction(collection, "readwrite")
+                .objectStore(collection);
+            const req = store.delete(key);
+            req.onerror = () => reject(req.error);
+            req.onsuccess = () => resolve({
+                collection: store.name,
+                keyPath: store.keyPath,
+                key: key,
+                db: this.schema.name,
+            });
+        }));
+    }
+    /**
+     * The clear() method of the IDBObjectStore interface creates and immediately returns an IDBRequest object,
+     * and clears this object store in a separate thread.
+     * This is for deleting all the current data out of an object store.
+     * Clearing an object store consists of removing all records from the object store and removing all records in indexes
+     * that reference the object store. To remove only some of the records in a store,
+     * use IDBObjectStore.delete passing a key or IDBKeyRange.
+     *
+     * @param collection
+     */
+    clear(collection) {
+        return this.open.then((db) => new Promise((resolve, reject) => {
             const req = db
                 .transaction(collection, "readwrite")
                 .objectStore(collection)
-                .delete(key);
+                .clear();
+            req.onerror = () => reject(req.error);
+            req.onsuccess = () => resolve({
+                db: this.schema.name,
+                collection: collection,
+            });
+        }));
+    }
+    /**
+     * The count() method of the IDBObjectStore interface returns an IDBRequest object, and, in a separate thread,
+     * returns the total number of records that match the provided key or IDBKeyRange.
+     * If no arguments are provided, it returns the total number of records in the store.
+     *
+     * @param collection
+     * @param key
+     */
+    count(collection, key) {
+        return this.open.then((db) => new Promise((resolve, reject) => {
+            const req = db
+                .transaction(collection)
+                .objectStore(collection)
+                .count(key);
+            req.onerror = () => reject(req.error);
             req.onsuccess = () => resolve(req.result);
-            req.onerror = () => reject(req.error);
-        }));
-    }
-    /**
-     * Opens a cursor over the records matching query, ordered by direction.
-     * If query is null, all records in store are matched.
-     * If successful, request's result will be an IDBCursorWithValue pointing at the first matching record, or null if there were no matching records.
-     *
-     * @param collection
-     * @param query
-     * @param direction
-     */
-    all(collection, query, direction) {
-        return this.open.then((db) => new Promise((resolve, reject) => {
-            const list = [];
-            const req = db
-                .transaction(collection)
-                .objectStore(collection)
-                .openCursor(query, direction);
-            req.onerror = () => reject(req.error);
-            req.onsuccess = () => {
-                const cursor = req.result;
-                if (cursor) {
-                    const value = cursor.value;
-                    list.push(value);
-                    cursor.continue();
-                }
-                else {
-                    resolve(list);
-                }
-            };
-        }));
-    }
-    /**
-     * Opens a cursor with key only flag set over the records matching query, ordered by direction.
-     * If query is null, all records in store are matched.
-     * If successful, request's result will be an IDBCursor pointing at the first matching record, or null if there were no matching records.
-     *
-     * @param collection
-     * @param query
-     * @param direction
-     */
-    allKeys(collection, query, direction) {
-        return this.open.then((db) => new Promise((resolve, reject) => {
-            const list = [];
-            const req = db
-                .transaction(collection)
-                .objectStore(collection)
-                .openKeyCursor(query, direction);
-            req.onsuccess = () => {
-                const cursor = req.result;
-                if (cursor) {
-                    const value = cursor.key;
-                    list.push(value);
-                    cursor.continue();
-                }
-                else {
-                    resolve(list);
-                }
-            };
-            req.onerror = () => reject(req.error);
         }));
     }
     /**
@@ -184,50 +202,93 @@ class BrowserDb {
                 .transaction(collection)
                 .objectStore(collection)
                 .get(query);
-            req.onsuccess = () => resolve(req.result);
             req.onerror = () => reject(req.error);
+            req.onsuccess = () => resolve(req.result);
         }));
     }
     /**
-     * The execution of a real query.
+     * Retrieves the values of the records matching the given key or key range in query (up to count if given).
+     * If successful, request's result will be an Array of the values.
      *
      * @param collection
-     * @param where
-     * @param orderBy
-     * @param offset
-     * @param limit
+     * @param query
+     * @param count
      */
-    query(collection, where = null, orderBy = null, offset = 0, limit = 0) {
-        return this.all(collection).then((all) => {
-            if (where)
-                all = all.filter((rec) => where.filterRecord(rec));
-            if (orderBy)
-                orderBy.sort(all);
-            if (offset < 1 && limit < 1)
-                return all;
-            else {
-                const result = [];
-                let end = offset + limit;
-                if (limit === 0 || end > all.length)
-                    end = all.length;
-                for (let i = offset; i < end; i++) {
-                    result.push(all[i]);
-                }
-                return result;
-            }
-        });
+    getAll(collection, query, count) {
+        return this.open.then((db) => new Promise((resolve, reject) => {
+            const req = db
+                .transaction(collection)
+                .objectStore(collection)
+                .getAll(query, count);
+            req.onerror = () => reject(req.error);
+            req.onsuccess = () => resolve(req.result);
+        }));
     }
     /**
-     * The first element of a query.
+     * Retrieves the keys of records matching the given key or key range in query (up to count if given).
+     * If successful, request's result will be an Array of the keys.
+     * @param collection
+     * @param query
+     * @param count
+     */
+    getAllKeys(collection, query, count) {
+        return this.open.then((db) => new Promise((resolve, reject) => {
+            const req = db
+                .transaction(collection)
+                .objectStore(collection)
+                .getAllKeys(query, count);
+            req.onerror = () => reject(req.error);
+            req.onsuccess = () => resolve(req.result);
+        }));
+    }
+    /**
+     * Opens a cursor over the records matching query, ordered by direction. If query is null, all records in store are matched.
+     * If successful, request's result will be an IDBCursorWithValue pointing at the first matching record, or null if there were no matching records.
      *
      * @param collection
-     * @param where
-     * @param orderBy
-     * @param offset
-     * @param limit
      */
-    first(collection, where = null, orderBy = null) {
-        return this.query(collection, where, orderBy, 0, 1).then((arr) => arr.length > 0 ? arr[0] : null);
+    forEach(collection, fn, query, direction) {
+        return this.open.then((db) => new Promise((resolve, reject) => {
+            const req = db
+                .transaction(collection)
+                .objectStore(collection)
+                .openCursor(query, direction);
+            req.onerror = () => reject(req.error);
+            req.onsuccess = () => {
+                const cursor = req.result;
+                if (cursor) {
+                    fn(cursor);
+                }
+                else
+                    resolve();
+            };
+        }));
+    }
+    /**
+     * Retrieves record keys for all objects in the object store matching the specified parameter
+     * or all objects in the store if no parameters are given.
+     *
+     * @param collection
+     * @param fn
+     * @param query
+     * @param direction
+     */
+    forEachKey(collection, fn, query, direction) {
+        return this.open.then((db) => new Promise((resolve, reject) => {
+            const req = db
+                .transaction(collection)
+                .objectStore(collection)
+                .openKeyCursor(query, direction);
+            req.onerror = () => reject(req.error);
+            req.onsuccess = () => {
+                const cursor = req.result;
+                if (cursor) {
+                    fn(cursor);
+                }
+                else
+                    resolve();
+            };
+        }));
     }
 }
 exports.default = BrowserDb;

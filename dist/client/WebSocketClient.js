@@ -1,81 +1,76 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const EventEmitter_1 = require("../common/EventEmitter");
-var ClientSocketEventType;
-(function (ClientSocketEventType) {
-    ClientSocketEventType["CONNECT"] = "CONNECT";
-    ClientSocketEventType["DISCONNECT"] = "DISCONNECT";
-    ClientSocketEventType["ATTEMPT"] = "ATTEMPT";
-    ClientSocketEventType["ERROR"] = "ERROR";
-    ClientSocketEventType["MESSAGE"] = "MESSAGE";
-})(ClientSocketEventType = exports.ClientSocketEventType || (exports.ClientSocketEventType = {}));
-class ClientSocket {
-    constructor(url, protocols, reconnectInterval) {
-        this.onOpen = (event) => {
-            this._isConnected = true;
-            this._isConnecting = false;
-            if (this._reconnectHandle) {
-                window.clearInterval(this._reconnectHandle);
-                this._reconnectHandle = undefined;
-            }
-            this._emitter.emit(ClientSocketEventType.CONNECT, event);
-        };
-        this.onMessage = (event) => {
-            this._emitter.emit(ClientSocketEventType.MESSAGE, event.data);
+const DEFAULT_RECONNECT_INTERVAL = 30000;
+var WebSocketEventType;
+(function (WebSocketEventType) {
+    WebSocketEventType["CONNECT"] = "WS_CONNECT";
+    WebSocketEventType["DISCONNECT"] = "WS_DISCONNECT";
+    WebSocketEventType["ERROR"] = "WS_ERROR";
+    WebSocketEventType["MESSAGE"] = "WS_MESSAGE";
+    WebSocketEventType["ATTEMPT"] = "WS_ATTEMPT";
+})(WebSocketEventType = exports.WebSocketEventType || (exports.WebSocketEventType = {}));
+class WebSocketClient {
+    constructor(address, protocols, reconnectInterval) {
+        this.onOpen = () => {
+            this._connected = true;
+            this._connecting = false;
+            this.emitter.emit(WebSocketEventType.CONNECT, event);
         };
         this.onClose = (event) => {
-            this._isConnected = false;
-            this._isConnecting = false;
-            if (!this._reconnectHandle && this.reconnectInterval > 1000)
-                this._reconnectHandle = window.setInterval(this.reconnect, this.reconnectInterval);
-            this._emitter.emit(ClientSocketEventType.DISCONNECT, event);
+            this._connected = false;
+            this._connecting = false;
+            this.emitter.emit(WebSocketEventType.DISCONNECT, event);
         };
         this.onError = (event) => {
-            this._emitter.emit(ClientSocketEventType.ERROR, event);
-            event.stopPropagation();
+            this.emitter.emit(WebSocketEventType.ERROR, event);
         };
-        this.reconnect = () => {
-            if (this.isConnected) {
-                if (this._reconnectHandle) {
-                    window.clearInterval(this._reconnectHandle);
-                    this._reconnectHandle = undefined;
-                }
-            }
-            else if (!this._isConnecting) {
-                this._emitter.emit(ClientSocketEventType.ATTEMPT, this);
-                this.connect();
-            }
+        this.onAttempt = () => {
+            this._connecting = true;
+            this.emitter.emit(WebSocketEventType.ATTEMPT);
+            this.connect();
         };
-        this.url = url;
+        this.onMessage = (event) => {
+            this.emitter.emit(WebSocketEventType.MESSAGE, event);
+        };
+        this.emitter = new EventEmitter_1.default();
+        this.address = address;
         this.protocols = protocols;
-        this.reconnectInterval = reconnectInterval ? reconnectInterval : 30000;
-        this._isConnected = false;
-        this._isConnecting = false;
-        this._emitter = new EventEmitter_1.default();
+        this._connected = false;
+        this._connecting = true;
+        this.reconnectHandler = window.setInterval(this.onAttempt, reconnectInterval || DEFAULT_RECONNECT_INTERVAL);
+        this.connect();
     }
     connect() {
-        if (this._isConnected || this._isConnecting)
+        if (this._connected || this._connecting)
             return;
-        this._isConnecting = true;
-        this._socket = new WebSocket(this.url, this.protocols);
-        this._socket.onopen = this.onOpen;
-        this._socket.onmessage = this.onMessage;
-        this._socket.onclose = this.onClose;
-        this._socket.onerror = this.onError;
-        if (!this._reconnectHandle)
-            this._reconnectHandle = window.setInterval(this.reconnect, this.reconnectInterval);
+        this.socket = new WebSocket(this.address, this.protocols);
+        this.socket.onopen = this.onOpen;
+        this.socket.onclose = this.onClose;
+        this.socket.onerror = this.onError;
+        this.socket.onmessage = this.onMessage;
     }
     on(event, listener) {
-        this._emitter.on(event, listener);
+        this.emitter.on(event, listener);
     }
     off(event, listener) {
-        this._emitter.off(event, listener);
+        this.emitter.off(event, listener);
     }
-    send(data) {
-        this._socket.send(data);
+    emit(event, params) {
+        this.emitter.emit(event, params);
+    }
+    stopTrying() {
+        window.clearInterval(this.reconnectHandler);
+        this.reconnectHandler = 0;
     }
     isConnected() {
-        return this._isConnected;
+        return this._connected;
+    }
+    isConnecting() {
+        return this._connecting;
+    }
+    send(data) {
+        this.socket.send(data);
     }
 }
-exports.ClientSocket = ClientSocket;
+exports.WebSocketClient = WebSocketClient;

@@ -1,3 +1,5 @@
+import Handlers from "./Handlers";
+
 /**
  * A rpc call is represented by sending a Request object to a Server. The Request object has the following members
  */
@@ -162,8 +164,7 @@ export function createRpcId(): string {
 /**
  *
  */
-export class JsonRpc<T> {
-  private handlers: any = {};
+export class JsonRpc extends Handlers {
   private pending: any = {};
 
   /**
@@ -171,30 +172,19 @@ export class JsonRpc<T> {
    * If none is found, console.error is used to display an error.
    */
   raiseError = (err: Error): void => {
-    let errHandler = this.handlers["error"];
-    if (!errHandler) errHandler = this.handlers["Error"];
-    if (!errHandler) errHandler = this.handlers["ERROR"];
+    let errHandler = this.getHandler["error"];
+    if (!errHandler) errHandler = this.getHandler["Error"];
+    if (!errHandler) errHandler = this.getHandler["ERROR"];
     if (!errHandler) errHandler = console.error;
     errHandler(err);
   };
-
-  setHandler(method: string, handler: T) {
-    this.handlers[method] = handler;
-  }
-
-  removeHandler(method: string) {
-    delete this.handlers[method];
-  }
-
-  getHandler(method: string): T {
-    return this.handlers[method];
-  }
 
   call(
     pipe: (json: string) => void,
     method: string,
     params?: any
   ): Promise<any> {
+    //console.log("sending request on pipe", pipe, method, params);
     return new Promise((resolve, reject) => {
       const pending = new JsonRpcPendingRequest(
         resolve,
@@ -211,6 +201,7 @@ export class JsonRpc<T> {
 
   resolve(response: JsonRpcResponse): void {
     const req: JsonRpcPendingRequest = this.pending[response.id];
+    //console.log("received a remote response", response, req);
     if (req) {
       delete this.pending[response.id];
       if (response.error) req.reject(response.error);
@@ -221,6 +212,7 @@ export class JsonRpc<T> {
   }
 
   notify(pipe: (json: string) => void, method: string, params?: any) {
+    console.log("Notifying pipe", pipe, method, params);
     const req: JsonRpcRequest = {
       id: null,
       jsonrpc: "2.0",

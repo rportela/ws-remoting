@@ -1,3 +1,4 @@
+import Handlers from "./Handlers";
 /**
  * A rpc call is represented by sending a Request object to a Server. The Request object has the following members
  */
@@ -128,17 +129,13 @@ export declare function createRpcId(): string;
 /**
  *
  */
-export declare class JsonRpc<T> {
-    private handlers;
+export declare class JsonRpc extends Handlers {
     private pending;
     /**
      * Tries to find a generic handler to errors.
      * If none is found, console.error is used to display an error.
      */
     raiseError: (err: Error) => void;
-    setHandler(method: string, handler: T): void;
-    removeHandler(method: string): void;
-    getHandler(method: string): T;
     call(pipe: (json: string) => void, method: string, params?: any): Promise<any>;
     resolve(response: JsonRpcResponse): void;
     notify(pipe: (json: string) => void, method: string, params?: any): void;

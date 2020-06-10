@@ -28,4 +28,9 @@ export default class EventEmitter {
      * @param params
      */
     emit(key: string, params?: any): number;
+    /**
+     * Clears all listeners from this emitter instance.
+     *
+     */
+    clear(): void;
 }

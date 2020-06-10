@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-const Db_1 = require("./Db");
+const DbSelect_1 = require("./DbSelect");
 class MemoryDb {
     constructor(schema) {
         this.schema = schema;
@@ -18,11 +18,11 @@ class MemoryDb {
             ? this.records[col.name].find((r) => r[col.keyPath.toString()] === key)
             : null;
     }
-    all(collection) {
+    getAll(collection) {
         return Promise.resolve(this.records[collection]);
     }
     select(collection) {
-        return new Db_1.NaiveDbSelect(this, collection);
+        return new NaiveDbSelect(this, collection);
     }
     add(collection, record) {
         this.records[collection].push(record);
@@ -43,8 +43,8 @@ class MemoryDb {
     delete(collection, key) {
         throw new Error("Method not implemented.");
     }
-    dropCollection(collection) {
-        delete this.records[collection];
+    clear(collection) {
+        this.records[collection] = {};
         return Promise.resolve({
             db: this.schema.name,
             collection: collection,
@@ -59,3 +59,18 @@ class MemoryDb {
     }
 }
 exports.MemoryDb = MemoryDb;
+class MemoryDbSelect extends DbSelect_1.DbSelect {
+    count() {
+        throw new Error("Method not implemented.");
+    }
+    first() {
+        throw new Error("Method not implemented.");
+    }
+    all() {
+        throw new Error("Method not implemented.");
+    }
+    forEach(fn) {
+        throw new Error("Method not implemented.");
+    }
+}
+exports.MemoryDbSelect = MemoryDbSelect;

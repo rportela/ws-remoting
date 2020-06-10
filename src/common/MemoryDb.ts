@@ -1,12 +1,6 @@
-import {
-  Db,
-  DbSchema,
-  DbKey,
-  DbSelect,
-  NaiveDbSelect,
-  DbDatabaseDropEvent,
-  DbCollectionDropEvent,
-} from "./Db";
+import { Db, DbKey, DbSchema } from "./Db";
+import { DbSelect } from "./DbSelect";
+import { DbCollectionClearEvent, DbDatabaseDropEvent } from "./DbEvents";
 
 export class MemoryDb implements Db {
   private schema: DbSchema;
@@ -28,7 +22,7 @@ export class MemoryDb implements Db {
       ? this.records[col.name].find((r) => r[col.keyPath.toString()] === key)
       : null;
   }
-  all(collection: string): Promise<any[]> {
+  getAll(collection: string): Promise<any[]> {
     return Promise.resolve(this.records[collection]);
   }
   select<T>(collection: string): DbSelect<T> {
@@ -53,8 +47,8 @@ export class MemoryDb implements Db {
   delete(collection: string, key: DbKey): Promise<any> {
     throw new Error("Method not implemented.");
   }
-  dropCollection(collection: string): Promise<DbCollectionDropEvent> {
-    delete this.records[collection];
+  clear(collection: string): Promise<DbCollectionClearEvent> {
+    this.records[collection] = {};
     return Promise.resolve({
       db: this.schema.name,
       collection: collection,
@@ -65,5 +59,21 @@ export class MemoryDb implements Db {
     return Promise.resolve({
       db: this.schema.name,
     });
+  }
+}
+
+export class MemoryDbSelect<T> extends DbSelect<T> {
+  
+  count(): Promise<number> {
+    throw new Error("Method not implemented.");
+  }
+  first(): Promise<T> {
+    throw new Error("Method not implemented.");
+  }
+  all(): Promise<T[]> {
+    throw new Error("Method not implemented.");
+  }
+  forEach(fn: (param: T) => any): void {
+    throw new Error("Method not implemented.");
   }
 }

@@ -19,16 +19,18 @@ class JsonRpcServerSocket {
         this.onMessage = (data) => {
             const msg = JSON.parse(data.toString());
             if (JsonRpc2_1.isRpcRequest(msg)) {
+                console.log("received a message request", this.id, msg);
                 this.server.receiveSocketRequest(this, msg);
             }
             else {
+                console.log("received a response message", this.id, msg);
                 this.server.receiveSocketResponse(this, msg);
             }
         };
         this.onClose = () => {
             this.server.unregisterClient(this);
         };
-        this.info = message;
+        this.info = message.headers;
         this.id = message.headers["sec-websocket-key"].toString();
         this.server = server;
         this.socket = socket;
@@ -45,6 +47,7 @@ class JsonRpcServerSocket {
             error: err,
             result: result,
         };
+        console.log("responding request", resp);
         const json = JSON.stringify(resp);
         this.socket.send(json);
     }
@@ -69,6 +72,7 @@ class JsonRpcServer {
         this.registerClient = (ws, message) => {
             const client = new JsonRpcServerSocket(this, ws, message);
             this.clients.push(client);
+            console.log("got a new client", client.info);
             this.run(JsonRpcEventType.CLIENT_CONNECT, client, client.info);
         };
         this.onHttpRequest = (req, res) => {
@@ -80,24 +84,23 @@ class JsonRpcServer {
         this.socket = new WebSocket.Server({ server: this.server });
         this.socket.on("connection", this.registerClient);
     }
-    run(method, client, params) {
-        const handler = this.rpc.getHandler(method);
-        return handler ? handler(client, params) : undefined;
-    }
     unregisterClient(client) {
         const idx = this.clients.indexOf(client);
         if (idx >= 0) {
             this.clients.splice(idx, 1);
+            console.log("lost a client", client.info);
             this.run(JsonRpcEventType.CLIENT_DISCONNECT, client, client.info);
         }
+    }
+    run(method, client, params) {
+        const handler = this.rpc.getHandler(method);
+        return handler ? handler(client, params) : undefined;
     }
     receiveSocketResponse(client, response) {
         this.rpc.resolve(response);
     }
     receiveSocketRequest(client, request) {
-        if (request.id)
-            this.receiveSocketNotification(client, request);
-        else {
+        if (request.id) {
             const handler = this.rpc.getHandler(request.method);
             if (handler) {
                 try {
@@ -115,8 +118,12 @@ class JsonRpcServer {
                 client.respond(request, new Error("Method not found " + request.method), undefined);
             }
         }
+        else {
+            this.receiveSocketNotification(client, request);
+        }
     }
     receiveSocketNotification(client, request) {
+        console.log("received a notification", request);
         const handler = this.rpc.getHandler(request.method);
         if (handler)
             handler(client, request.params);
