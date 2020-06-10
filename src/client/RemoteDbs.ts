@@ -46,6 +46,7 @@ export default class WsDbClient extends WebSocketRpc {
   };
 
   private onRemoteConnect = () => {
+    console.log("Connection detected");
     this.call(RemoteDbEventType.SCHEMA).then(this.onRemoteSchema);
   };
 

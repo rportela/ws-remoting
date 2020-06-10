@@ -9,7 +9,7 @@ export default class WebSocketRpc {
     private flushBuffer;
     private flushNotifications;
     protected onMessage: (event: MessageEvent) => void;
-    send(data: SocketData): void;
+    send: (data: SocketData) => void;
     setHandler(method: string, handler: (...params: any) => void): void;
     removeHandler(method: string): void;
     runHandler(method: string, ...params: any): Promise<any>;

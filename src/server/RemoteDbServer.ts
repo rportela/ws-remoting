@@ -1,7 +1,20 @@
 import { Db, DbSchemaCollection } from "../common/Db";
-import { DbEventType, DbRecordDeleteEvent, DbRecordSaveEvent } from "../common/DbEvents";
-import { DbFilterComparison, DbFilterExpression, DbFilterTerm } from "../common/DbFilters";
-import { RemoteDbEventType, RemoteDbQueryParams, RemoteDbScalarParams, RemoteDbSyncParams } from "../common/RemoteDb";
+import {
+  DbEventType,
+  DbRecordDeleteEvent,
+  DbRecordSaveEvent,
+} from "../common/DbEvents";
+import {
+  DbFilterComparison,
+  DbFilterExpression,
+  DbFilterTerm,
+} from "../common/DbFilters";
+import {
+  RemoteDbEventType,
+  RemoteDbQueryParams,
+  RemoteDbScalarParams,
+  RemoteDbSyncParams,
+} from "../common/RemoteDb";
 import { JsonRpcServer, JsonRpcServerSocket } from "./JsonRpcServer";
 
 export default class RemoteDbServer extends JsonRpcServer {
@@ -97,7 +110,11 @@ export default class RemoteDbServer extends JsonRpcServer {
         key: record[colSchema.keyPath.toString()],
       };
       console.log("Notifying record to put", event.db, event.collection, not);
-      client.notify(DbEventType.PUT, record);
+      client.notify(DbEventType.PUT, {
+        db: event.db,
+        collection: event.collection,
+        record: record,
+      });
     });
   };
 

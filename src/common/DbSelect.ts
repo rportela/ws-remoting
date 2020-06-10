@@ -1,9 +1,15 @@
-import { DbFilter, DbFilterExpression, DbFilterTerm, DbFilterType } from "./DbFilters";
+import {
+  DbFilter,
+  DbFilterExpression,
+  DbFilterTerm,
+  DbFilterType,
+} from "./DbFilters";
 import { DbOrderBy } from "./DbSort";
 
 /**
  * Interfaces a database select with configurable where clause,
  * orderBy clause, offset number and a limit of records.
+ *
  * @author Rodrigo Portela
  */
 export abstract class DbSelect<T> {
@@ -77,5 +83,5 @@ export abstract class DbSelect<T> {
   abstract count(): Promise<number>;
   abstract first(): Promise<T>;
   abstract all(): Promise<T[]>;
-  abstract forEach(fn: (param: T) => any): void;
+  abstract forEach(fn: (param: T) => any): Promise<void>;
 }

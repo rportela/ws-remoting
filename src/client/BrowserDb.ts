@@ -373,7 +373,7 @@ export default class BrowserDb implements Db {
       (db) =>
         new Promise((resolve, reject) => {
           const req = db
-            .transaction(collection)
+            .transaction(collection, "readwrite")
             .objectStore(collection)
             .openCursor(query, direction);
           req.onerror = () => reject(req.error);
@@ -413,7 +413,7 @@ export default class BrowserDb implements Db {
       (db) =>
         new Promise((resolve, reject) => {
           const req = db
-            .transaction(collection)
+            .transaction(collection, "readwrite")
             .objectStore(collection)
             .openKeyCursor(query, direction);
           req.onerror = () => reject(req.error);

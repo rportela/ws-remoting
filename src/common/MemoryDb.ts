@@ -26,7 +26,7 @@ export class MemoryDb implements Db {
     return Promise.resolve(this.records[collection]);
   }
   select<T>(collection: string): DbSelect<T> {
-    return new NaiveDbSelect(this, collection);
+    return new MemoryDbSelect(this, collection);
   }
   add(collection: string, record: any): Promise<any> {
     this.records[collection].push(record);
@@ -63,17 +63,34 @@ export class MemoryDb implements Db {
 }
 
 export class MemoryDbSelect<T> extends DbSelect<T> {
-  
+  db: MemoryDb;
+
+  constructor(db: MemoryDb, collection: string) {
+    super(collection);
+    this.db = db;
+  }
+
   count(): Promise<number> {
-    throw new Error("Method not implemented.");
+    return this.all().then((arr) => arr.length);
   }
   first(): Promise<T> {
-    throw new Error("Method not implemented.");
+    return this.all().then((arr) => (arr.length > 0 ? arr[0] : undefined));
   }
   all(): Promise<T[]> {
-    throw new Error("Method not implemented.");
+    return this.db.getAll(this._from).then((recs: any[]) => {
+      if (this._where) recs = recs.filter(this._where.filterRecord);
+      if (recs.length === 0) return recs;
+      if (this._orderBy) this._orderBy.sort(recs);
+      const start = this._offset || 0;
+      const end = Math.min(this._offset + this._limit, recs.length);
+      if (start) {
+        return end ? recs.slice(start, end) : recs.slice(start, recs.length);
+      } else if (end) {
+        return recs.slice(0, end);
+      } else return recs;
+    });
   }
-  forEach(fn: (param: T) => any): void {
-    throw new Error("Method not implemented.");
+  forEach(fn: (param: T) => any): Promise<void> {
+    return this.all().then((recs) => recs.forEach(fn));
   }
 }

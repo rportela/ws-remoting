@@ -63,6 +63,12 @@ class WebSocketRpc {
                 this.rpc.resolve(msg);
             }
         };
+        this.send = (data) => {
+            if (this.socket.isConnected())
+                this.socket.send(data);
+            else
+                this.buffer.push(data);
+        };
         this.socket = new WebSocketClient_1.WebSocketClient(address, protocols, reconnectInterval);
         this.socket.on(WebSocketClient_1.WebSocketEventType.CONNECT, this.onSocketConnect);
         this.socket.on(WebSocketClient_1.WebSocketEventType.MESSAGE, this.onMessage);
@@ -79,12 +85,6 @@ class WebSocketRpc {
             cursor.delete();
             cursor.continue();
         });
-    }
-    send(data) {
-        if (this.socket.isConnected())
-            this.socket.send(data);
-        else
-            this.buffer.push(data);
     }
     setHandler(method, handler) {
         this.rpc.setHandler(method, handler);

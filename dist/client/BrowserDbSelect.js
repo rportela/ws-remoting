@@ -8,11 +8,15 @@ class BrowserDbSelect extends DbSelect_1.DbSelect {
     }
     getRecords() {
         const recs = [];
-        return this.applyFilter(recs.push).then(() => recs);
+        return this.applyFilter((rec) => recs.push(rec)).then(() => recs);
     }
     applyFilter(fn) {
         return this.db.forEach(this._from, (cursor) => {
-            if (!this._where || this._where.filterRecord(cursor.value))
+            if (this._where) {
+                if (this._where.filterRecord(cursor.value))
+                    fn(cursor.value);
+            }
+            else
                 fn(cursor.value);
             cursor.continue();
         });

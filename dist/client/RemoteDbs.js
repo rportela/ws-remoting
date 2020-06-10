@@ -34,6 +34,7 @@ class WsDbClient extends WebSocketRpc_1.default {
             this.getDb(event.db).then((db) => db.delete(event.collection, event.key));
         };
         this.onRemoteConnect = () => {
+            console.log("Connection detected");
             this.call(RemoteDb_1.RemoteDbEventType.SCHEMA).then(this.onRemoteSchema);
         };
         this.onRemoteSchema = (schema, ignoreSync) => {

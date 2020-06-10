@@ -16,8 +16,10 @@ export declare class MemoryDb implements Db {
     drop(): Promise<DbDatabaseDropEvent>;
 }
 export declare class MemoryDbSelect<T> extends DbSelect<T> {
+    db: MemoryDb;
+    constructor(db: MemoryDb, collection: string);
     count(): Promise<number>;
     first(): Promise<T>;
     all(): Promise<T[]>;
-    forEach(fn: (param: T) => any): void;
+    forEach(fn: (param: T) => any): Promise<void>;
 }

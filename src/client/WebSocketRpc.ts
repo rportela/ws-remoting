@@ -95,10 +95,10 @@ export default class WebSocketRpc {
     }
   };
 
-  send(data: SocketData): void {
+  send = (data: SocketData): void => {
     if (this.socket.isConnected()) this.socket.send(data);
     else this.buffer.push(data);
-  }
+  };
 
   setHandler(method: string, handler: (...params: any) => void) {
     this.rpc.setHandler(method, handler);

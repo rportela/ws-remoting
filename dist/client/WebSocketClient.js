@@ -12,7 +12,7 @@ var WebSocketEventType;
 })(WebSocketEventType = exports.WebSocketEventType || (exports.WebSocketEventType = {}));
 class WebSocketClient {
     constructor(address, protocols, reconnectInterval) {
-        this.onOpen = () => {
+        this.onOpen = (event) => {
             this._connected = true;
             this._connecting = false;
             this.emitter.emit(WebSocketEventType.CONNECT, event);
@@ -26,7 +26,6 @@ class WebSocketClient {
             this.emitter.emit(WebSocketEventType.ERROR, event);
         };
         this.onAttempt = () => {
-            this._connecting = true;
             this.emitter.emit(WebSocketEventType.ATTEMPT);
             this.connect();
         };
@@ -37,13 +36,14 @@ class WebSocketClient {
         this.address = address;
         this.protocols = protocols;
         this._connected = false;
-        this._connecting = true;
+        this._connecting = false;
         this.reconnectHandler = window.setInterval(this.onAttempt, reconnectInterval || DEFAULT_RECONNECT_INTERVAL);
         this.connect();
     }
     connect() {
         if (this._connected || this._connecting)
             return;
+        this._connecting = true;
         this.socket = new WebSocket(this.address, this.protocols);
         this.socket.onopen = this.onOpen;
         this.socket.onclose = this.onClose;

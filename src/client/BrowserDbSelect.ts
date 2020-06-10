@@ -11,13 +11,14 @@ export default class BrowserDbSelect<T> extends DbSelect<T> {
 
   private getRecords(): Promise<any[]> {
     const recs: T[] = [];
-    return this.applyFilter(recs.push).then(() => recs);
+    return this.applyFilter((rec) => recs.push(rec)).then(() => recs);
   }
 
   applyFilter(fn: (record: T) => void): Promise<void> {
     return this.db.forEach(this._from, (cursor: IDBCursorWithValue) => {
-      if (!this._where || this._where.filterRecord(cursor.value))
-        fn(cursor.value);
+      if (this._where) {
+        if (this._where.filterRecord(cursor.value)) fn(cursor.value);
+      } else fn(cursor.value);
       cursor.continue();
     });
   }

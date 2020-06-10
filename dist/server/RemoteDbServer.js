@@ -64,7 +64,11 @@ class RemoteDbServer extends JsonRpcServer_1.JsonRpcServer {
                     key: record[colSchema.keyPath.toString()],
                 };
                 console.log("Notifying record to put", event.db, event.collection, not);
-                client.notify(DbEvents_1.DbEventType.PUT, record);
+                client.notify(DbEvents_1.DbEventType.PUT, {
+                    db: event.db,
+                    collection: event.collection,
+                    record: record,
+                });
             });
         };
         this.databases = databases;

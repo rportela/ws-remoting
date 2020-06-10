@@ -5,6 +5,7 @@ const DbSort_1 = require("./DbSort");
 /**
  * Interfaces a database select with configurable where clause,
  * orderBy clause, offset number and a limit of records.
+ *
  * @author Rodrigo Portela
  */
 class DbSelect {
