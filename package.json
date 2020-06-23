@@ -1,6 +1,6 @@
 {
   "name": "ws-remoting",
-  "version": "3.0.0",
+  "version": "4.0.1",
   "description": "A remoting procedure call package with websockets and promises",
   "main": "index.js",
   "scripts": {

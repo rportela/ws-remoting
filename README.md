@@ -21,7 +21,7 @@ This is a simple tutorial to help you get started. More advanced examples will b
 
 Set up a very simple server, register a test action to be invoked from the client.
 
-> Use **WsRemotingServer**. This is expected to run on a nodejs environment.
+> Use **JsonRpcServer**. This is expected to run on a nodejs environment.
 
 ```javascript
 const http = require("http");

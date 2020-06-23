@@ -8,6 +8,6 @@ export declare class DbOrderBy {
     descending: boolean;
     next?: DbOrderBy;
     constructor(name: string, descending?: boolean);
-    createComparer(): (a: any, b: any) => number;
+    createComparer(): (a: any, b: any) => 0 | 1 | -1;
     sort(arr: any[]): void;
 }

@@ -12,8 +12,16 @@ class DbOrderBy {
     }
     createComparer() {
         return this.descending
-            ? (a, b) => a[this.name] - b[this.name]
-            : (a, b) => b[this.name] - a[this.name];
+            ? (a, b) => {
+                const x = b[this.name];
+                const y = a[this.name];
+                return x === y ? 0 : x > y ? 1 : -1;
+            }
+            : (a, b) => {
+                const x = a[this.name];
+                const y = b[this.name];
+                return x === y ? 0 : x > y ? 1 : -1;
+            };
     }
     sort(arr) {
         arr.sort(this.createComparer());
