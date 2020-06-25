@@ -1,4 +1,3 @@
-import { SocketData } from "../common/JsonRpc2";
 export default class WebSocketRpc {
     private buffer;
     private rpc;
@@ -9,7 +8,7 @@ export default class WebSocketRpc {
     private flushBuffer;
     private flushNotifications;
     protected onMessage: (event: MessageEvent) => void;
-    send: (data: SocketData) => void;
+    send: (data: string | ArrayBuffer | SharedArrayBuffer | ArrayBufferView | Blob) => void;
     setHandler(method: string, handler: (...params: any) => void): void;
     removeHandler(method: string): void;
     runHandler(method: string, ...params: any): Promise<any>;

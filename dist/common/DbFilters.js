@@ -92,6 +92,8 @@ class DbFilterNode {
                     throw new Error("Unknown DbFilterOperation " + this.operation);
             }
         }
+        else
+            return this.filter.filterRecord(record);
     }
     filterType() {
         return DbFilterType.NODE;

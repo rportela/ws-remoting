@@ -94,6 +94,7 @@ export class DbFilterNode implements DbFilter {
   constructor(filter: DbFilter) {
     this.filter = filter;
   }
+  
   filterRecord(record: any): boolean {
     if (this.next) {
       switch (this.operation) {
@@ -108,8 +109,9 @@ export class DbFilterNode implements DbFilter {
         default:
           throw new Error("Unknown DbFilterOperation " + this.operation);
       }
-    }
+    } else return this.filter.filterRecord(record);
   }
+
   filterType(): DbFilterType {
     return DbFilterType.NODE;
   }
