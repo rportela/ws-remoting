@@ -3,26 +3,31 @@
  * a column name and a direction for the sort.
  * @author Rodrigo Portela
  */
+
+export interface DbOrderByGetter {
+  (record: any): any;
+}
 export class DbOrderBy {
-  name: string;
+  getter: DbOrderByGetter;
   descending: boolean;
   next?: DbOrderBy;
 
-  constructor(name: string, descending: boolean = false) {
-    this.name = name;
+  constructor(getter: string | DbOrderByGetter, descending: boolean = false) {
+    this.getter =
+      typeof getter === "string" ? (record: any) => record[getter] : getter;
     this.descending = descending;
   }
 
   createComparer() {
     return this.descending
       ? (a: any, b: any) => {
-          const x = b[this.name];
-          const y = a[this.name];
+          const x = this.getter(b);
+          const y = this.getter(a);
           return x === y ? 0 : x > y ? 1 : -1;
         }
       : (a: any, b: any) => {
-          const x = a[this.name];
-          const y = b[this.name];
+          const x = this.getter(a);
+          const y = this.getter(b);
           return x === y ? 0 : x > y ? 1 : -1;
         };
   }
